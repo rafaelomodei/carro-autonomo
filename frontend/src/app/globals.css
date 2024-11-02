@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+    --background-light: #ffffff;
+    --background-dark: #0c0c0c;
+    --foreground-light: #0c0c0c;
+    --foreground-dark: #ffffff;
+    --primary-color: #00ff00;
+    --secondary-color: #a9a9a9;
+  }
+
+  body {
+    background-color: var(--background-light);
+    color: var(--foreground-light);
+  }
+
+  .dark body {
+    background-color: var(--background-dark);
+    color: var(--foreground-dark);
+  }
+}
+
+input {
+  color: var(--foreground-dark);
+  border-color: var(--secondary-color);
+}
+
+.dark input {
+  background-color: var(--background-dark);
+  color: var(--foreground-dark);
+  border-color: var(--secondary-color);
+}
+
+.dark .card {
+  background-color: var(--background-dark);
+  color: var(--foreground-dark);
+}
+
+.card {
+  background-color: var(--background-light);
+  color: var(--foreground-light);
+}
