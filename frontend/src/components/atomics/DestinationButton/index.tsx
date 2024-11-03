@@ -11,7 +11,6 @@ interface DestinationButtonProps {
 const DestinationButton = ({
   label,
   Icon,
-  isSelected,
   onClick,
 }: DestinationButtonProps) => {
   return (

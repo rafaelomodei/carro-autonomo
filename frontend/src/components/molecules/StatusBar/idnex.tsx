@@ -1,11 +1,9 @@
-import { useWebSocket } from '@/hook/useWebSocket';
 import { Wifi, WifiOff, Activity, Clock } from 'lucide-react';
 
 const StatusBar = () => {
-  const { isConnected } = useWebSocket();
 
   const handleConnect = () => {
-    if (isConnected)
+    if (false)
       return (
         <div className='flex items-center space-x-2 text-xs'>
           <Wifi className='w-4 h-4' />

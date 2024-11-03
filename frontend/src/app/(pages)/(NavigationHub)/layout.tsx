@@ -4,7 +4,7 @@ import StatusBar from '@/components/molecules/StatusBar/idnex';
 import BottomBar from '@/components/organism/BottomBar';
 import { usePathname } from 'next/navigation';
 
-export default function pageLayout({
+export default function PageLayout({
   children,
 }: {
   children: React.ReactNode;

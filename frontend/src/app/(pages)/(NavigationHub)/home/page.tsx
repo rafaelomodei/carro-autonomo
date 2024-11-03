@@ -7,7 +7,7 @@ import { WithoutDestination } from '@/components/organism/WithoutDestination';
 import { useDestination } from '@/providers/DestinationProvider';
 
 const Home = () => {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const { selectedDestination } = useDestination();
 
   if (status === 'loading') {
