@@ -1,0 +1,60 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" version="26.0.5">
+  <diagram name="websocket - cominicação" id="IlIRcVNozP5ge9RVy0o_">
+    <mxGraphModel dx="1687" dy="809" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="kzifh89NsaU5PKa4gut3-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="kzifh89NsaU5PKa4gut3-1" target="kzifh89NsaU5PKa4gut3-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-7" value="&amp;nbsp;Comandos&amp;nbsp;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="kzifh89NsaU5PKa4gut3-5">
+          <mxGeometry x="-0.1732" y="2" relative="1" as="geometry">
+            <mxPoint x="18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="kzifh89NsaU5PKa4gut3-1" target="kzifh89NsaU5PKa4gut3-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-13" value="Informações" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="kzifh89NsaU5PKa4gut3-11">
+          <mxGeometry x="-0.1071" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-1" value="Servidor&lt;div&gt;Websocket&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="320" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="kzifh89NsaU5PKa4gut3-2" target="kzifh89NsaU5PKa4gut3-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-8" value="&amp;nbsp;Informações&amp;nbsp;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="kzifh89NsaU5PKa4gut3-6">
+          <mxGeometry x="-0.0171" y="-1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-2" value="Client&lt;div&gt;Websocket&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="550" y="320" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-3" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Raspberry&lt;/h1&gt;&lt;p&gt;Responsável por enviar as informações do veículo para o servidor.&lt;/p&gt;&lt;p&gt;Quando estiver&amp;nbsp; no modo manual recebe os comando enviado pelo servidor.&lt;/p&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="550" y="400" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-4" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Servidor&lt;/h1&gt;&lt;p&gt;Responsável por enviar os comando para o raspberry.&lt;/p&gt;&lt;p&gt;Esses comando é apenas quando está no modo manual. Pois no modo automático, o próprio&amp;nbsp; raspberry lida com as informações e envia o resultado para o servidor / computador.&lt;/p&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="234" y="390" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="kzifh89NsaU5PKa4gut3-9" target="kzifh89NsaU5PKa4gut3-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-12" value="Comandos" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="kzifh89NsaU5PKa4gut3-10">
+          <mxGeometry x="-0.3058" y="-3" relative="1" as="geometry">
+            <mxPoint y="41" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-9" value="Interface&lt;div&gt;Web&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="354" y="170" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="kzifh89NsaU5PKa4gut3-14" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;Interface&lt;/h1&gt;&lt;p&gt;Responsável por exibir as informações e enviar comandos para o veículo.&lt;/p&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="490" y="160" width="180" height="120" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,3 @@
+/home/omodei/Documentos/projetos/autonomousCar/autonomous_car/build/CMakeFiles/autonomous_car.dir
+/home/omodei/Documentos/projetos/autonomousCar/autonomous_car/build/CMakeFiles/edit_cache.dir
+/home/omodei/Documentos/projetos/autonomousCar/autonomous_car/build/CMakeFiles/rebuild_cache.dir
