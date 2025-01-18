@@ -1,6 +1,6 @@
 'use client';
 
-import { LucideProps, CarFront, Sparkles, Icon } from 'lucide-react';
+import { CarFront, Sparkles } from 'lucide-react';
 import {
   createContext,
   useContext,

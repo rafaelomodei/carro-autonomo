@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 
 type CommandPayload = {
   type: string;
-  payload: Array<Record<string, any>>;
+  payload: Array<Record<string, unknown>>;
 };
 
-type Direction = 'forward' | 'backward' | 'left' | 'right';
+// type Direction = 'forward' | 'backward' | 'left' | 'right';
 
 export const useCar = (url: string) => {
   const socket = useRef<WebSocket | null>(null);
