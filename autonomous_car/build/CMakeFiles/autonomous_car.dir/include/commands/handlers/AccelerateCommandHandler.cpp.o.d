@@ -1,8 +1,8 @@
 CMakeFiles/autonomous_car.dir/include/commands/handlers/AccelerateCommandHandler.cpp.o: \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/handlers/AccelerateCommandHandler.cpp \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/handlers/AccelerateCommandHandler.cpp \
  /usr/include/stdc-predef.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/handlers/AccelerateCommandHandler.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/handlers/../CommandProcessor.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/handlers/AccelerateCommandHandler.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/handlers/../CommandProcessor.h \
  /usr/include/c++/13/functional \
  /usr/include/x86_64-linux-gnu/c++/13/bits/c++config.h \
  /usr/include/x86_64-linux-gnu/c++/13/bits/os_defines.h \

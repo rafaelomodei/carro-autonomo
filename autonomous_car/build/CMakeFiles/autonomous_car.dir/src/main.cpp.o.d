@@ -1,7 +1,7 @@
 CMakeFiles/autonomous_car.dir/src/main.cpp.o: \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/src/main.cpp \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/src/main.cpp \
  /usr/include/stdc-predef.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/CommandProcessor.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/CommandProcessor.h \
  /usr/include/c++/13/functional \
  /usr/include/x86_64-linux-gnu/c++/13/bits/c++config.h \
  /usr/include/x86_64-linux-gnu/c++/13/bits/os_defines.h \
@@ -198,7 +198,7 @@ CMakeFiles/autonomous_car.dir/src/main.cpp.o: \
  /usr/include/x86_64-linux-gnu/c++/13/bits/error_constants.h \
  /usr/include/c++/13/stdexcept /usr/include/c++/13/bits/streambuf.tcc \
  /usr/include/c++/13/utility /usr/include/c++/13/bits/stl_relops.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/managers/WebSocketManager.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/managers/WebSocketManager.h \
  /usr/include/boost/asio.hpp \
  /usr/include/boost/asio/any_completion_executor.hpp \
  /usr/include/boost/asio/detail/config.hpp /usr/include/boost/config.hpp \

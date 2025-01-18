@@ -1,7 +1,7 @@
 CMakeFiles/autonomous_car.dir/include/managers/WebSocketManager.cpp.o: \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/managers/WebSocketManager.cpp \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/managers/WebSocketManager.cpp \
  /usr/include/stdc-predef.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/managers/WebSocketManager.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/managers/WebSocketManager.h \
  /usr/include/boost/asio.hpp \
  /usr/include/boost/asio/any_completion_executor.hpp \
  /usr/include/boost/asio/detail/config.hpp /usr/include/boost/config.hpp \

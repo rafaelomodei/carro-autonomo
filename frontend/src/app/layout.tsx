@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import NextAuthSessionProvider from '@/providers/nextAuthSessionProvider';
 import { ThemeProvider } from '@/providers/themeProvider';
 import { DestinationProvider } from '@/providers/DestinationProvider';
+import { VehicleConfigProvider } from '@/providers/VehicleConfigProvider';
 
 export const metadata: Metadata = {
   title: 'Carro autônomo',
@@ -24,7 +25,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <NextAuthSessionProvider>
-            <DestinationProvider>{children}</DestinationProvider>
+            <DestinationProvider>
+              <VehicleConfigProvider>{children}</VehicleConfigProvider>
+            </DestinationProvider>
           </NextAuthSessionProvider>
         </ThemeProvider>
       </body>

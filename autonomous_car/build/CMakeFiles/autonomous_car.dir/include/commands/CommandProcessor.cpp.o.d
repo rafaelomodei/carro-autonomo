@@ -1,7 +1,7 @@
 CMakeFiles/autonomous_car.dir/include/commands/CommandProcessor.cpp.o: \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/CommandProcessor.cpp \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/CommandProcessor.cpp \
  /usr/include/stdc-predef.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/CommandProcessor.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/CommandProcessor.h \
  /usr/include/c++/13/functional \
  /usr/include/x86_64-linux-gnu/c++/13/bits/c++config.h \
  /usr/include/x86_64-linux-gnu/c++/13/bits/os_defines.h \
@@ -198,11 +198,11 @@ CMakeFiles/autonomous_car.dir/include/commands/CommandProcessor.cpp.o: \
  /usr/include/x86_64-linux-gnu/c++/13/bits/error_constants.h \
  /usr/include/c++/13/stdexcept /usr/include/c++/13/bits/streambuf.tcc \
  /usr/include/c++/13/utility /usr/include/c++/13/bits/stl_relops.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/handlers/AccelerateCommandHandler.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/handlers/../CommandProcessor.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/handlers/AlertCommandHandler.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/handlers/BrakeCommandHandler.h \
- /home/omodei/Documentos/projetos/autonomousCar/autonomous_car/include/commands/handlers/TurnCommandHandler.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/handlers/AccelerateCommandHandler.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/handlers/../CommandProcessor.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/handlers/AlertCommandHandler.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/handlers/BrakeCommandHandler.h \
+ /home/omodei/Documentos/projetos/carro-autonomo/autonomous_car/include/commands/handlers/TurnCommandHandler.h \
  /usr/include/c++/13/iostream /usr/include/c++/13/ostream \
  /usr/include/c++/13/ios /usr/include/c++/13/bits/basic_ios.h \
  /usr/include/c++/13/bits/locale_facets.h /usr/include/c++/13/cwctype \

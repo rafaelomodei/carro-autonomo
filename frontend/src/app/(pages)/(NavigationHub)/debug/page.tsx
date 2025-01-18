@@ -1,5 +1,6 @@
 'use client';
 
+import { useCar } from '@/hooks/useCar';
 import React, { useRef } from 'react';
 
 const Debug = () => {

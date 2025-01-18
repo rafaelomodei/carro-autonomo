@@ -1,6 +1,6 @@
 'use client';
 
-import StatusBar from '@/components/molecules/StatusBar/idnex';
+import StatusBar from '@/components/molecules/StatusBar';
 import BottomBar from '@/components/organism/BottomBar';
 import { usePathname } from 'next/navigation';
 
