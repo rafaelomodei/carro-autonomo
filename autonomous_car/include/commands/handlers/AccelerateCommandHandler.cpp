@@ -1,6 +1,6 @@
 #include "AccelerateCommandHandler.h"
 #include <iostream>
-#include <wiringPi.h>
+#include <pigpio.h>
 
 void AccelerateCommandHandler::handle(const rapidjson::Value &cmd) const {
   setupGPIO();
@@ -9,9 +9,9 @@ void AccelerateCommandHandler::handle(const rapidjson::Value &cmd) const {
     int speed = cmd["speed"].GetInt();
     std::cout << "Comando recebido: Acelerar para " << speed << " km/h" << std::endl;
 
-    // Mapeamento da velocidade para PWM (exemplo)
-    int pwmValue = (speed * 1023) / 100; // Assumindo que 100 km/h é o máximo
-    pwmWrite(18, pwmValue);              // Pino GPIO 18 configurado como saída PWM
+    // Converter velocidade para PWM (0-255)
+    int pwmValue = (speed * 255) / 100; // Assumindo 100 km/h como velocidade máxima
+    gpioPWM(18, pwmValue);              // Configura PWM no pino 18
   } else {
     std::cerr << "Comando 'accelerate' inválido: falta 'speed'." << std::endl;
   }
@@ -20,8 +20,11 @@ void AccelerateCommandHandler::handle(const rapidjson::Value &cmd) const {
 void AccelerateCommandHandler::setupGPIO() const {
   static bool isSetup = false;
   if (!isSetup) {
-    wiringPiSetupGpio();     // Configura o GPIO com numeração BCM
-    pinMode(18, PWM_OUTPUT); // Define o pino 18 como saída PWM
+    if (gpioInitialise() < 0) {
+      std::cerr << "Falha ao inicializar pigpio." << std::endl;
+      exit(1);
+    }
+    gpioSetMode(18, PI_OUTPUT); // Configura o pino 18 como saída
     isSetup = true;
   }
 }
