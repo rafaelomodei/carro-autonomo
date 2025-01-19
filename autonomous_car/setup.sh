@@ -8,5 +8,6 @@ sudo apt update && sudo apt upgrade -y
 echo "Instalando dependências básicas..."
 sudo apt install -y build-essential cmake libboost-all-dev git
 sudo apt install rapidjson-dev
+sudo apt install wiringpi
 
 echo "Configuração concluída!"

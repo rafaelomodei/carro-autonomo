@@ -1,6 +1,6 @@
 'use client';
 
-import { LucideProps, CarFront, Sparkles, Icon } from 'lucide-react';
+import { CarFront, Sparkles } from 'lucide-react';
 import {
   createContext,
   useContext,
@@ -32,6 +32,7 @@ export const DriveMode: Record<'MANUAL' | 'AUTONOMOUS', IDriveMode> = {
 export interface VehicleConfig {
   speedLimit: number;
   driveMode: IDriveMode;
+  carConnection?: string;
 }
 
 interface VehicleConfigContextProps {
@@ -53,6 +54,7 @@ export const VehicleConfigProvider = ({
   const [config, setConfig] = useState<VehicleConfig>({
     speedLimit: 50,
     driveMode: DriveMode.MANUAL,
+    carConnection: undefined,
   });
 
   return (

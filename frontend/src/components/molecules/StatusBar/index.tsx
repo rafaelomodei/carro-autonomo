@@ -4,7 +4,8 @@ import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
 import { Wifi, WifiOff, Activity, Clock } from 'lucide-react';
 
 const StatusBar = () => {
-  const { isConnected } = useCar('ws://localhost:8080');
+  const { config } = useVehicleConfig();
+  const { isConnected } = useCar(config?.carConnection);
   const currentTime = useCurrentTime();
   const vehicleConfig = useVehicleConfig();
 
