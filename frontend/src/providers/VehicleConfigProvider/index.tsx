@@ -51,8 +51,6 @@ export const VehicleConfigProvider = ({
 }: {
   children: ReactNode;
 }) => {
-  const [url, setUrl] = useState<string>('');
-
   const [config, setConfig] = useState<VehicleConfig>({
     speedLimit: 50,
     driveMode: DriveMode.MANUAL,
