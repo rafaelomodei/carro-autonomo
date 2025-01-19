@@ -16,10 +16,7 @@ void AccelerateCommandHandler::handle(const rapidjson::Value &cmd) const {
     std::cout << "Comando recebido: Acelerar para " << speed << " km/h" << std::endl;
 
     setMotorDirection(speed);
-
-    // Converter velocidade para PWM (0-255)
-    int pwmValue = abs(speed * 255 / 100);  // Assumindo 100 km/h como velocidade máxima
-    pwmValue     = std::min(pwmValue, 255); // Garantir que não ultrapasse o máximo permitido
+    
   } else {
     std::cerr << "Comando 'accelerate' inválido: falta 'speed'." << std::endl;
   }
