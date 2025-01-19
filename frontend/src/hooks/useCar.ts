@@ -1,3 +1,4 @@
+import { isValidWebSocketUrl } from '@/lib/websocket';
 import { useEffect, useRef, useState } from 'react';
 
 type CommandPayload = {
@@ -7,12 +8,14 @@ type CommandPayload = {
 
 // type Direction = 'forward' | 'backward' | 'left' | 'right';
 
-export const useCar = (url: string) => {
+export const useCar = (url?: string) => {
   const socket = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
 
   useEffect(() => {
+    if (!isValidWebSocketUrl(url) || !url) return;
+
     socket.current = new WebSocket(url);
 
     socket.current.onopen = () => {
@@ -50,8 +53,8 @@ export const useCar = (url: string) => {
   // Mapeia teclas para comandos e ajusta o formato do payload
   const handleKeyDown = (event: KeyboardEvent) => {
     const keyMap: Record<string, CommandPayload> = {
-      w: { type: 'commands', payload: [{ action: 'accelerate', speed: 1.0 }] },
-      s: { type: 'commands', payload: [{ action: 'accelerate', speed: -1.0 }] },
+      w: { type: 'commands', payload: [{ action: 'accelerate', speed: 200 }] },
+      s: { type: 'commands', payload: [{ action: 'accelerate', speed: -200 }] },
       a: { type: 'commands', payload: [{ action: 'turn', direction: 'left' }] },
       d: {
         type: 'commands',
@@ -70,7 +73,7 @@ export const useCar = (url: string) => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [handleKeyDown]);
 
-  return { isConnected, messages, sendMessage };
+  return { isConnected, messages, url };
 };

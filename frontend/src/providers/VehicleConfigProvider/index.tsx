@@ -32,6 +32,7 @@ export const DriveMode: Record<'MANUAL' | 'AUTONOMOUS', IDriveMode> = {
 export interface VehicleConfig {
   speedLimit: number;
   driveMode: IDriveMode;
+  carConnection?: string;
 }
 
 interface VehicleConfigContextProps {
@@ -50,9 +51,12 @@ export const VehicleConfigProvider = ({
 }: {
   children: ReactNode;
 }) => {
+  const [url, setUrl] = useState<string>('');
+
   const [config, setConfig] = useState<VehicleConfig>({
     speedLimit: 50,
     driveMode: DriveMode.MANUAL,
+    carConnection: undefined,
   });
 
   return (
