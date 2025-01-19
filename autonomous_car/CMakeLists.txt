@@ -29,6 +29,10 @@ if (Boost_FOUND)
     target_link_libraries(autonomous_car ${Boost_LIBRARIES})
 endif()
 
+# Vincular pigpio
+find_library(PIGPIO_LIB pigpio REQUIRED)
+target_link_libraries(autonomous_car ${PIGPIO_LIB})
+
 # Adicionar a biblioteca pthread (necessária para Boost.Asio)
 find_package(Threads REQUIRED)
 target_link_libraries(autonomous_car Threads::Threads)
