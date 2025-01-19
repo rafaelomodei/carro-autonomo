@@ -53,13 +53,14 @@ export const useCar = (url?: string) => {
   // Mapeia teclas para comandos e ajusta o formato do payload
   const handleKeyDown = (event: KeyboardEvent) => {
     const keyMap: Record<string, CommandPayload> = {
-      w: { type: 'commands', payload: [{ action: 'accelerate', speed: 200 }] },
-      s: { type: 'commands', payload: [{ action: 'accelerate', speed: -200 }] },
-      a: { type: 'commands', payload: [{ action: 'turn', direction: 'left' }] },
+      w: { type: 'commands', payload: [{ action: 'accelerate', speed: 200 }] }, // Frente
+      s: { type: 'commands', payload: [{ action: 'accelerate', speed: -200 }] }, // Ré
+      a: { type: 'commands', payload: [{ action: 'turn', direction: 'left' }] }, // Virar à esquerda
       d: {
         type: 'commands',
         payload: [{ action: 'turn', direction: 'right' }],
-      },
+      }, // Virar à direita
+      ' ': { type: 'commands', payload: [{ action: 'accelerate', speed: 0 }] }, // Parar (aceleração 0)
     };
 
     const command = keyMap[event.key.toLowerCase()];
