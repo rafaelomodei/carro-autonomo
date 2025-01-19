@@ -29,6 +29,10 @@ if (Boost_FOUND)
     target_link_libraries(autonomous_car ${Boost_LIBRARIES})
 endif()
 
+# Adicionar a biblioteca pthread (necessária para Boost.Asio)
+find_package(Threads REQUIRED)
+target_link_libraries(autonomous_car Threads::Threads)
+
 # Adicionar RapidJSON
 include_directories(include/libs/rapidjson)
 
