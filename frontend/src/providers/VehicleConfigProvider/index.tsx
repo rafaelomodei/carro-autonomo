@@ -33,6 +33,7 @@ export interface VehicleConfig {
   speedLimit: number;
   driveMode: IDriveMode;
   carConnection?: string;
+  steeringSensitivity: number; // varia entre 0 a 1
 }
 
 interface VehicleConfigContextProps {
@@ -54,7 +55,8 @@ export const VehicleConfigProvider = ({
   const [config, setConfig] = useState<VehicleConfig>({
     speedLimit: 50,
     driveMode: DriveMode.MANUAL,
-    carConnection: undefined,
+    carConnection: 'ws://192.168.3.113:8080',
+    steeringSensitivity: 0.5,
   });
 
   return (

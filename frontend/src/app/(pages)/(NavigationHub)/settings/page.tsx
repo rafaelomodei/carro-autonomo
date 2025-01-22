@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { isValidWebSocketUrl } from '@/lib/websocket';
 import { useVehicleConfig, DriveMode } from '@/providers/VehicleConfigProvider';
@@ -29,7 +30,14 @@ const Settings = () => {
     });
   };
 
-  const handleSave = () => {
+  const handleDriveSteeringSensitivity = (value: number[]) => {
+    setConfig({
+      ...config,
+      steeringSensitivity: value[0], // O valor é o primeiro elemento do array
+    });
+  };
+
+  const handleServerSave = () => {
     setInitialUrl(config.carConnection);
     setIsSaveEnabled(false);
 
@@ -42,7 +50,7 @@ const Settings = () => {
   return (
     <div className='flex flex-col max-w-lg w-full min-h-full gap-8 pt-16'>
       <div>
-        <h1 className='text-2xl font-bold'>Configurações</h1>
+        <h1 className='text-3xl font-bold'>Configurações</h1>
         <Separator />
       </div>
       <div className='flex items-center justify-between'>
@@ -51,10 +59,11 @@ const Settings = () => {
           id='server-car'
           bg-orange-950
           onChange={(e) => setUrl(e.target.value)}
-          value={config.carConnection}
+          value={url}
+          defaultValue={config.carConnection}
           className='max-w-60'
         />
-        <Button onClick={handleSave} disabled={!isSaveEnabled}>
+        <Button onClick={handleServerSave} disabled={!isSaveEnabled}>
           Salvar
         </Button>
       </div>
@@ -62,6 +71,11 @@ const Settings = () => {
       <div className='flex items-center justify-between'>
         <Label className='text-md'>Tema atual</Label>
         <ModeToggle showSelectedTheme={true} />
+      </div>
+
+      <div>
+        <h1 className='text-2xl font-bold'>Direção</h1>
+        <Separator />
       </div>
 
       <div className='flex items-center justify-between'>
@@ -72,6 +86,21 @@ const Settings = () => {
           onCheckedChange={handleDriveModeChange}
         />
       </div>
+
+      <div className='flex-col flex gap-4'>
+        <Label className='text-md'>
+          Sensibilidade da direção:{' '}
+          <strong>{config.steeringSensitivity}</strong>
+        </Label>
+        <Slider
+          defaultValue={[config.steeringSensitivity]}
+          onValueChange={(value) => handleDriveSteeringSensitivity(value)}
+          max={1}
+          min={0.1}
+          step={0.1}
+        />
+      </div>
+      <Separator />
     </div>
   );
 };
