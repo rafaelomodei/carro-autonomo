@@ -14,12 +14,45 @@ VideoStreamHandler::~VideoStreamHandler() {
   stopStreaming();
 }
 
-void VideoStreamHandler::startStreaming() {
-  if (isStreaming)
-    return;
+void VideoStreamHandler::streamLoop() {
+  cv::VideoCapture cap(cameraIndex);
 
-  isStreaming     = true;
-  streamingThread = std::thread(&VideoStreamHandler::streamLoop, this);
+  // Configuração adicional
+  cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+  cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
+  cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+  cap.set(cv::CAP_PROP_FPS, 30);
+
+  if (!cap.isOpened()) {
+    std::cerr << "Erro ao abrir a câmera no índice: " << cameraIndex << std::endl;
+    return;
+  }
+
+  std::cout << "Câmera aberta com sucesso! Índice: " << cameraIndex << std::endl;
+
+  cv::Mat frame;
+  while (isStreaming) {
+    cap >> frame;
+    if (frame.empty()) {
+      std::cerr << "Frame vazio capturado, continuando..." << std::endl;
+      continue;
+    }
+
+    // Converte o frame para JPEG
+    std::vector<unsigned char> buffer;
+    cv::imencode(".jpg", frame, buffer);
+
+    // Converte para string e envia via callback
+    std::string frameBase64(buffer.begin(), buffer.end());
+    if (sendFrameCallback) {
+      sendFrameCallback(frameBase64);
+    }
+
+    // Limitar taxa de quadros
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  }
+
+  cap.release();
 }
 
 void VideoStreamHandler::stopStreaming() {

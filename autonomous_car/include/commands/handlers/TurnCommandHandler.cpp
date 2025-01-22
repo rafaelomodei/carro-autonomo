@@ -46,5 +46,10 @@ void TurnCommandHandler::setupGPIO() const {
 }
 
 void TurnCommandHandler::setServoPulse(int pulseWidth) const {
-  gpioServo(SERVO_PIN, pulseWidth); // Define a largura de pulso no servo
+  if (pulseWidth < MIN_PULSE || pulseWidth > MAX_PULSE) {
+    std::cerr << "Erro: Largura de pulso inválida (" << pulseWidth << " µs). Deve estar entre "
+              << MIN_PULSE << " e " << MAX_PULSE << " µs." << std::endl;
+    return;
+  }
+  gpioServo(SERVO_PIN, pulseWidth);
 }
