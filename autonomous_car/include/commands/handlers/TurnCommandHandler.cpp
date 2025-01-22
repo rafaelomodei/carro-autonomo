@@ -4,6 +4,8 @@
 #include <pigpio.h>
 
 #define SERVO_PIN 18 // Pino GPIO usado pelo servo
+#define MIN_PULSE 1100
+#define MAX_PULSE 1750
 
 TurnCommandHandler::TurnCommandHandler()
     : currentPulse(config.initialPulse) { // Inicializa o pulso com o valor inicial

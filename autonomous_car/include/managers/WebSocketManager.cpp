@@ -43,32 +43,56 @@ void WebSocketManager::acceptConnections() {
 }
 
 void WebSocketManager::sendFrame(const std::string &frameData) {
-  for (const auto &session : activeSessions) {
-    if (session->is_open()) {
-      session->text(true);
-      session->write(boost::asio::buffer(frameData));
+    for (auto it = activeSessions.begin(); it != activeSessions.end();) {
+        auto &session = *it;
+        if (session->is_open()) {
+            try {
+                session->text(true);
+                session->write(boost::asio::buffer(frameData));
+                ++it; // Avançar para a próxima sessão apenas se não houver erros
+            } catch (const std::exception &e) {
+                std::cerr << "Erro ao enviar frame: " << e.what() << std::endl;
+                it = activeSessions.erase(it); // Remove a sessão com erro
+            }
+        } else {
+            it = activeSessions.erase(it); // Remove a sessão fechada
+        }
     }
-  }
 }
 
 void WebSocketManager::handleSession(std::shared_ptr<boost::beast::websocket::stream<boost::asio::ip::tcp::socket>> ws) {
-  activeSessions.push_back(ws);
-
-  std::thread([ws, this]() {
     try {
-      ws->accept();
+        ws->accept();
+        activeSessions.push_back(ws); // Adicionar sessão apenas após a aceitação
 
-      for (;;) {
-        boost::beast::flat_buffer buffer;
-        ws->read(buffer);
+        std::thread([ws, this]() {
+            try {
+                for (;;) {
+                    boost::beast::flat_buffer buffer;
+                    ws->read(buffer);
 
-        std::string message = boost::beast::buffers_to_string(buffer.data());
-        if (onMessageCallback) {
-          onMessageCallback(message);
-        }
-      }
+                    std::string message = boost::beast::buffers_to_string(buffer.data());
+                    if (onMessageCallback) {
+                        onMessageCallback(message);
+                    }
+                }
+            } catch (const boost::beast::system_error &se) {
+                // Tratamento específico para erros do Boost.Beast
+                if (se.code() != boost::beast::websocket::error::closed) {
+                    std::cerr << "Erro na sessão: " << se.what() << std::endl;
+                }
+            } catch (const std::exception &e) {
+                std::cerr << "Erro na sessão: " << e.what() << std::endl;
+            }
+
+            // Remover sessão ao sair
+            auto it = std::find(activeSessions.begin(), activeSessions.end(), ws);
+            if (it != activeSessions.end()) {
+                activeSessions.erase(it);
+            }
+        }).detach();
     } catch (const std::exception &e) {
-      std::cerr << "Erro na sessão: " << e.what() << std::endl;
+        std::cerr << "Erro ao aceitar sessão: " << e.what() << std::endl;
     }
-  }).detach();
 }
+

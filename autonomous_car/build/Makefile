@@ -304,6 +304,33 @@ include/managers/WebSocketManager.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/autonomous_car.dir/build.make CMakeFiles/autonomous_car.dir/include/managers/WebSocketManager.cpp.s
 .PHONY : include/managers/WebSocketManager.cpp.s
 
+include/video/VideoStreamHandler.o: include/video/VideoStreamHandler.cpp.o
+
+.PHONY : include/video/VideoStreamHandler.o
+
+# target to build an object file
+include/video/VideoStreamHandler.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/autonomous_car.dir/build.make CMakeFiles/autonomous_car.dir/include/video/VideoStreamHandler.cpp.o
+.PHONY : include/video/VideoStreamHandler.cpp.o
+
+include/video/VideoStreamHandler.i: include/video/VideoStreamHandler.cpp.i
+
+.PHONY : include/video/VideoStreamHandler.i
+
+# target to preprocess a source file
+include/video/VideoStreamHandler.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/autonomous_car.dir/build.make CMakeFiles/autonomous_car.dir/include/video/VideoStreamHandler.cpp.i
+.PHONY : include/video/VideoStreamHandler.cpp.i
+
+include/video/VideoStreamHandler.s: include/video/VideoStreamHandler.cpp.s
+
+.PHONY : include/video/VideoStreamHandler.s
+
+# target to generate assembly for a file
+include/video/VideoStreamHandler.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/autonomous_car.dir/build.make CMakeFiles/autonomous_car.dir/include/video/VideoStreamHandler.cpp.s
+.PHONY : include/video/VideoStreamHandler.cpp.s
+
 src/main.o: src/main.cpp.o
 
 .PHONY : src/main.o
@@ -358,6 +385,9 @@ help:
 	@echo "... include/managers/WebSocketManager.o"
 	@echo "... include/managers/WebSocketManager.i"
 	@echo "... include/managers/WebSocketManager.s"
+	@echo "... include/video/VideoStreamHandler.o"
+	@echo "... include/video/VideoStreamHandler.i"
+	@echo "... include/video/VideoStreamHandler.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
