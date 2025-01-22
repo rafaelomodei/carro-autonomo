@@ -19,6 +19,7 @@ add_executable(autonomous_car
     include/commands/handlers/AlertCommandHandler.cpp
     include/commands/handlers/BrakeCommandHandler.cpp
     include/commands/handlers/TurnCommandHandler.cpp
+    include/video/VideoStreamHandler.cpp 
 )
 
 # Encontrar a biblioteca Boost
@@ -40,7 +41,9 @@ target_link_libraries(autonomous_car Threads::Threads)
 # Adicionar RapidJSON
 include_directories(include/libs/rapidjson)
 
-if (Boost_FOUND)
-    include_directories(${Boost_INCLUDE_DIRS})
-    target_link_libraries(autonomous_car ${Boost_LIBRARIES})
+# Encontrar e adicionar OpenCV
+find_package(OpenCV REQUIRED)
+if (OpenCV_FOUND)
+    include_directories(${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(autonomous_car ${OpenCV_LIBS})
 endif()

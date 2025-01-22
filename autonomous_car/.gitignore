@@ -1,0 +1,54 @@
+# Diretórios de build
+build/
+cmake-build-*/
+
+# Arquivos de saída binários
+*.exe
+*.out
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+
+# Arquivos de cache do CMake
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+compile_commands.json
+
+# Arquivos de log
+*.log
+
+# Arquivos de IDEs
+.vscode/
+.idea/
+*.suo
+*.vcxproj
+*.vcxproj.filters
+*.user
+*.project
+*.cproject
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# Outros arquivos temporários
+*.tmp
+*.swp
+*.bak
+*.orig
+*.rej
+
+# Arquivos gerados por testes ou execução do programa
+*.test
+*.pid
+*.core
+
+# Dependências geradas pelo projeto (se forem externas, use uma pasta "vendor")
+vendor/
+
+# Cache do CLion
+.clion.cache/

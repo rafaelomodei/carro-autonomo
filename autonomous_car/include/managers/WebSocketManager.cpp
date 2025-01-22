@@ -42,7 +42,18 @@ void WebSocketManager::acceptConnections() {
   });
 }
 
+void WebSocketManager::sendFrame(const std::string &frameData) {
+  for (const auto &session : activeSessions) {
+    if (session->is_open()) {
+      session->text(true);
+      session->write(boost::asio::buffer(frameData));
+    }
+  }
+}
+
 void WebSocketManager::handleSession(std::shared_ptr<boost::beast::websocket::stream<boost::asio::ip::tcp::socket>> ws) {
+  activeSessions.push_back(ws);
+
   std::thread([ws, this]() {
     try {
       ws->accept();
@@ -52,23 +63,9 @@ void WebSocketManager::handleSession(std::shared_ptr<boost::beast::websocket::st
         ws->read(buffer);
 
         std::string message = boost::beast::buffers_to_string(buffer.data());
-        std::cout << "Mensagem recebida: " << message << std::endl;
-
-        // Parse JSON usando RapidJSON
-        rapidjson::Document doc;
-        if (doc.Parse(message.c_str()).HasParseError()) {
-          std::cerr << "Erro ao processar JSON recebido." << std::endl;
-          continue;
-        }
-
-        // Passe o JSON para o callback, se existir
         if (onMessageCallback) {
           onMessageCallback(message);
         }
-
-        // Opcional: Responder ao cliente
-        ws->text(ws->got_text());
-        ws->write(boost::asio::buffer("Recebido: " + message));
       }
     } catch (const std::exception &e) {
       std::cerr << "Erro na sessão: " << e.what() << std::endl;
