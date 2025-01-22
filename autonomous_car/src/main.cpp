@@ -5,8 +5,6 @@
 #include <csignal>
 
 int main() {
-
-
   int port = 8080;
 
   CommandProcessor commandProcessor;
@@ -16,6 +14,7 @@ int main() {
     commandProcessor.processCommand(message);
   });
 
+  // Inicia o streaming de vídeo e transmite via WebSocket
   VideoStreamHandler videoStreamHandler(4, [&wsManager](const std::string &frameData) {
     wsManager.sendFrame(frameData);
   });
