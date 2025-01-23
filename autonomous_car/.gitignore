@@ -52,3 +52,5 @@ vendor/
 
 # Cache do CLion
 .clion.cache/
+
+edge_impulse/

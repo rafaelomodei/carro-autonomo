@@ -19,7 +19,7 @@ add_executable(autonomous_car
     include/commands/handlers/AlertCommandHandler.cpp
     include/commands/handlers/BrakeCommandHandler.cpp
     include/commands/handlers/TurnCommandHandler.cpp
-    include/video/VideoStreamHandler.cpp 
+    include/video/VideoStreamHandler.cpp
 )
 
 # Encontrar a biblioteca Boost
