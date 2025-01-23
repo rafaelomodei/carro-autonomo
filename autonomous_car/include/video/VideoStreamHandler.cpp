@@ -54,6 +54,8 @@ void VideoStreamHandler::streamLoop() {
       continue;
     }
 
+    cv::flip(frame, frame, 0);
+
     // Converte o frame para JPEG
     std::vector<unsigned char> buffer;
     cv::imencode(".jpg", frame, buffer);

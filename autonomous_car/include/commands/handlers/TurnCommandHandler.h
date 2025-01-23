@@ -7,8 +7,8 @@ class ServoConfig {
 public:
   int initialPulse = 1500; // Pulso inicial (neutro)
   int minPulse     = 1100; // Pulso mínimo para a esquerda
-  int maxPulse     = 1750; // Pulso máximo para a direita
-  int increment    = 50;   // Sensibilidade (incremento/decremento)
+  int maxPulse     = 1850; // Pulso máximo para a direita
+  int increment    = 100;   // Sensibilidade (incremento/decremento)
 };
 
 class TurnCommandHandler : public CommandHandler {
