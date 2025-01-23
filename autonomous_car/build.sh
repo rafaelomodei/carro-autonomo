@@ -20,26 +20,26 @@ log_error() {
 }
 
 # Iniciar o processo de build
-log_info " Iniciando o build..."
+log_info "Iniciando o build..."
 
-# Limpar diretório anterior
-if rm -rf build/*; then
-  log_success "Diretório de build limpo."
+# Criar o diretório de build, caso ainda não exista
+if [ ! -d "build" ]; then
+  mkdir -p build
+  log_success "Diretório de build criado."
 else
-  log_error "Falha ao limpar o diretório de build."
-  exit 1
+  log_info "Diretório de build já existe. Utilizando cache."
 fi
 
-# Criar e acessar o diretório de build
-if mkdir -p build && cd build; then
-  log_success "Diretório de build criado e acessado."
+# Acessar o diretório de build
+if cd build; then
+  log_success "Diretório de build acessado."
 else
-  log_error "Falha ao criar ou acessar o diretório de build."
+  log_error "Falha ao acessar o diretório de build."
   exit 1
 fi
 
 # Executar o CMake
-log_info " Executando o CMake..."
+log_info "Executando o CMake..."
 if cmake ..; then
   log_success "CMake configurado com sucesso."
 else
@@ -47,11 +47,11 @@ else
   exit 1
 fi
 
-# Executar o Make
-log_info " Compilando o projeto..."
-if make; then
+# Compilar o projeto utilizando cache
+log_info "Compilando o projeto..."
+if make -j$(nproc); then
   log_success "Build concluído com sucesso."
 else
-  log_error " Falha durante o build."
+  log_error "Falha durante o build."
   exit 1
 fi

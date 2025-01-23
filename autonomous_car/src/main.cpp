@@ -2,8 +2,11 @@
 #include "managers/WebSocketManager.h"
 #include "video/VideoStreamHandler.h"
 #include <iostream>
+#include <csignal>
 
 int main() {
+
+
   int port = 8080;
 
   CommandProcessor commandProcessor;
@@ -13,7 +16,7 @@ int main() {
     commandProcessor.processCommand(message);
   });
 
-  VideoStreamHandler videoStreamHandler(0, [&wsManager](const std::string &frameData) {
+  VideoStreamHandler videoStreamHandler(4, [&wsManager](const std::string &frameData) {
     wsManager.sendFrame(frameData);
   });
 
