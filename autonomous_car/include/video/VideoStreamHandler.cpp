@@ -1,9 +1,10 @@
 #include "VideoStreamHandler.h"
+#include "edge-impulse-sdk/classifier/ei_run_classifier.h"
 #include <iostream>
 #include <opencv2/highgui.hpp>
-#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/opencv.hpp>
+#include <sstream>
 #include <vector>
 
 VideoStreamHandler::VideoStreamHandler(int cameraIndex, const std::function<void(const std::string &)> &sendFrameCallback)
@@ -47,6 +48,7 @@ void VideoStreamHandler::streamLoop() {
   std::cout << "Câmera aberta com sucesso! Índice: " << cameraIndex << std::endl;
 
   cv::Mat frame;
+  cv::flip(frame, frame, 0);
   while (isStreaming) {
     cap >> frame;
     if (frame.empty()) {
@@ -54,20 +56,48 @@ void VideoStreamHandler::streamLoop() {
       continue;
     }
 
-    cv::flip(frame, frame, 0);
+    // Converte o frame para RGB (Edge Impulse requer formato RGB)
+    cv::Mat frameRGB;
+    cv::cvtColor(frame, frameRGB, cv::COLOR_BGR2RGB);
 
-    // Converte o frame para JPEG
+    // Normaliza e prepara os dados para o modelo
+    static float features[EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT * EI_CLASSIFIER_INPUT_FRAMES];
+    size_t       idx = 0;
+    for (int y = 0; y < EI_CLASSIFIER_INPUT_HEIGHT; y++) {
+      for (int x = 0; x < EI_CLASSIFIER_INPUT_WIDTH; x++) {
+        for (int c = 0; c < 3; c++) {
+          features[idx++] = frameRGB.at<cv::Vec3b>(y, x)[c] / 255.0f;
+        }
+      }
+    }
+
+    // Executa a inferência
+    ei_impulse_result_t result    = {0};
+    EI_IMPULSE_ERROR    ei_status = run_classifier(&result, features, false);
+    if (ei_status != EI_IMPULSE_OK) {
+      std::cerr << "Erro na inferência: " << ei_status << std::endl;
+      continue;
+    }
+
+    // Desenha os resultados no frame
+    for (size_t i = 0; i < EI_CLASSIFIER_OBJECT_DETECTION_COUNT; i++) {
+      auto box = result.bounding_boxes[i];
+      if (box.value > 0.5) {
+        cv::rectangle(frame, cv::Point(box.x, box.y), cv::Point(box.x + box.width, box.y + box.height),
+                      cv::Scalar(0, 255, 0), 2);
+        cv::putText(frame, box.label, cv::Point(box.x, box.y - 10),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 2);
+      }
+    }
+
+    // Converte o frame processado para JPEG
     std::vector<unsigned char> buffer;
     cv::imencode(".jpg", frame, buffer);
 
     // Converte para string e envia via callback
     std::string frameBase64(buffer.begin(), buffer.end());
     if (sendFrameCallback) {
-      try {
-        sendFrameCallback(frameBase64);
-      } catch (const std::exception &e) {
-        std::cerr << "Erro ao enviar frame: " << e.what() << std::endl;
-      }
+      sendFrameCallback(frameBase64);
     }
 
     // Limitar taxa de quadros

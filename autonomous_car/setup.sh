@@ -41,6 +41,8 @@ install_package "pigpio"
 install_package "python3-pigpio"
 install_package "libopencv-dev"
 install_package "v4l-utils"
+install_package "libboost-all-dev"
+install_package "libopencv-dev"
 
 # Exibir resultados
 echo -e "${BLUE}🛠️ Configuração concluída!${RESET}"

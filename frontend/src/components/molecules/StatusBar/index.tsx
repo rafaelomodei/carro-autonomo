@@ -1,11 +1,12 @@
-import { useCar } from '@/hooks/useCar';
 import { useCurrentTime } from '@/hooks/useCurrentTime';
-import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
+import {
+  useVehicleConfig,
+  VEHICLE_CAR_CONNECTION_URL,
+} from '@/providers/VehicleConfigProvider';
 import { Wifi, WifiOff, Activity, Clock } from 'lucide-react';
 
 const StatusBar = () => {
-  const { config } = useVehicleConfig();
-  const { isConnected } = useCar(config?.carConnection);
+  const { isConnected, config, setConfig } = useVehicleConfig();
   const currentTime = useCurrentTime();
   const vehicleConfig = useVehicleConfig();
 
@@ -19,7 +20,16 @@ const StatusBar = () => {
       );
 
     return (
-      <div className='flex items-center space-x-2 text-xs'>
+      <div
+        className='flex items-center space-x-2 text-xs'
+        role='button'
+        onClick={() =>
+          setConfig({
+            ...config,
+            carConnection: VEHICLE_CAR_CONNECTION_URL,
+          })
+        }
+      >
         <WifiOff className='w-4 h-4' />
         <span>Sem conexão com o veículo</span>
       </div>

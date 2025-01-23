@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react';
 
 const Settings = () => {
   const { config, setConfig } = useVehicleConfig();
-  const [url, setUrl] = useState<string | undefined>();
+  const [url, setUrl] = useState<string>('');
   const [initialUrl, setInitialUrl] = useState(config.carConnection);
   const [isSaveEnabled, setIsSaveEnabled] = useState(false);
 
@@ -57,7 +57,6 @@ const Settings = () => {
         <Label className='text-md'>Servidor do veículo</Label>
         <Input
           id='server-car'
-          bg-orange-950
           onChange={(e) => setUrl(e.target.value)}
           value={url}
           defaultValue={config.carConnection}

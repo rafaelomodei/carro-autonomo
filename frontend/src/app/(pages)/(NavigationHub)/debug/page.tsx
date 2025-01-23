@@ -1,15 +1,29 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React from 'react';
+import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
 
 const Debug = () => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const { isConnected, currentFrame } = useVehicleConfig();
 
   return (
-    <div className='relative flex flex-col w-full gap-4 pt-16'>
-      <div className='flex items-center justify-center w-full h-64 bg-black'>
-        <video ref={videoRef} className='w-full h-full' controls />
-      </div>
+    <div
+      className='relative flex items-center justify-center w-full'
+      style={{
+        height: 'calc(100vh - 152px)', // Cálculo direto da altura
+      }}
+    >
+      {currentFrame ? (
+        <img
+          src={currentFrame}
+          alt='Vídeo ao vivo'
+          className='absolute inset-0 object-cover w-full h-full'
+        />
+      ) : (
+        <h2 className='text-white text-center'>
+          {!isConnected && 'Conecte a um servidor webscoket'}
+        </h2>
+      )}
     </div>
   );
 };
