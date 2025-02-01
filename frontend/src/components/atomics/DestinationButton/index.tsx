@@ -1,5 +1,5 @@
-import { Button } from '@/components/ui/button'; // ShadCN Button Component
-import { LucideIcon } from 'lucide-react'; // Tipo de ícone
+import { Button } from '@/components/ui/button';
+import { LucideIcon } from 'lucide-react';
 
 interface DestinationButtonProps {
   label: string;

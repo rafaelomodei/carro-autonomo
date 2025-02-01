@@ -17,7 +17,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang='pt-BR' suppressHydrationWarning>
-      <body className='md:px-4 lg:px-8'>
+      <body suppressHydrationWarning>
         <ThemeProvider
           attribute='class'
           defaultTheme='system'
@@ -25,9 +25,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <NextAuthSessionProvider>
-            <DestinationProvider>
-              <VehicleConfigProvider>{children}</VehicleConfigProvider>
-            </DestinationProvider>
+            <div className='md:px-4 lg:px-8'>
+              <DestinationProvider>
+                <VehicleConfigProvider>{children}</VehicleConfigProvider>
+              </DestinationProvider>
+            </div>
           </NextAuthSessionProvider>
         </ThemeProvider>
       </body>

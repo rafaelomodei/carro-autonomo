@@ -19,6 +19,12 @@ interface IDriveMode {
   icon: JSX.Element;
 }
 
+interface IPidControl {
+  p: number;
+  i: number;
+  d: number;
+}
+
 export const VEHICLE_CAR_CONNECTION_URL = 'ws://192.168.3.113:8080';
 
 export const DriveMode: Record<'MANUAL' | 'AUTONOMOUS', IDriveMode> = {
@@ -39,6 +45,7 @@ export interface VehicleConfig {
   driveMode: IDriveMode;
   carConnection?: string;
   steeringSensitivity: number; // varia entre 0 a 1
+  pidControl: IPidControl;
 }
 
 interface VehicleConfigContextProps {
@@ -70,6 +77,11 @@ export const VehicleConfigProvider = ({
     driveMode: DriveMode.MANUAL,
     carConnection: undefined,
     steeringSensitivity: 0.5,
+    pidControl: {
+      p: 0.1,
+      i: 0.1,
+      d: 0.1,
+    },
   });
 
   const socket = useRef<WebSocket | null>();
@@ -146,7 +158,7 @@ export const VehicleConfigProvider = ({
       ' ': { type: 'commands', payload: [{ action: 'accelerate', speed: 0 }] }, // Parar (aceleração 0)
     };
 
-    const command = keyMap[event.key.toLowerCase()];
+    const command = keyMap[event.key?.toLowerCase()];
     if (command) {
       sendMessage(command);
     }

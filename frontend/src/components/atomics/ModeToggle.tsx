@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { Moon, Sun, Monitor } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
@@ -17,20 +17,21 @@ interface ModeToggleProps {
 
 export function ModeToggle({ showSelectedTheme = false }: ModeToggleProps) {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null; // Evita erro de hidratação
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant='outline' className='flex gap-4'>
-          {theme === 'light' && (
-            <Sun className='h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all' />
-          )}
-          {theme === 'dark' && (
-            <Moon className='h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all' />
-          )}
-          {theme === 'system' && (
-            <Monitor className='h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all' />
-          )}
+          {theme === 'light' && <Sun className='h-[1.2rem] w-[1.2rem]' />}
+          {theme === 'dark' && <Moon className='h-[1.2rem] w-[1.2rem]' />}
+          {theme === 'system' && <Monitor className='h-[1.2rem] w-[1.2rem]' />}
           {showSelectedTheme && (
             <div className='text-sm'>
               {theme

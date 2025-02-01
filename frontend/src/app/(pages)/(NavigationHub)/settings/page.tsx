@@ -37,6 +37,27 @@ const Settings = () => {
     });
   };
 
+  const handlePidControlP = (value: number[]) => {
+    setConfig({
+      ...config,
+      pidControl: { ...config.pidControl, p: value[0] },
+    });
+  };
+
+  const handlePidControlI = (value: number[]) => {
+    setConfig({
+      ...config,
+      pidControl: { ...config.pidControl, i: value[0] },
+    });
+  };
+
+  const handlePidControlD = (value: number[]) => {
+    setConfig({
+      ...config,
+      pidControl: { ...config.pidControl, d: value[0] },
+    });
+  };
+
   const handleServerSave = () => {
     setInitialUrl(config.carConnection);
     setIsSaveEnabled(false);
@@ -86,12 +107,17 @@ const Settings = () => {
         />
       </div>
 
-      <div className='flex-col flex gap-4'>
+      <div
+        className={`flex-col flex gap-4 ${
+          config.driveMode.id !== DriveMode.MANUAL.id ? 'opacity-45' : ''
+        }`}
+      >
         <Label className='text-md'>
           Sensibilidade da direção:{' '}
           <strong>{config.steeringSensitivity}</strong>
         </Label>
         <Slider
+          disabled={config.driveMode.id !== DriveMode.MANUAL.id}
           defaultValue={[config.steeringSensitivity]}
           onValueChange={(value) => handleDriveSteeringSensitivity(value)}
           max={1}
@@ -99,7 +125,53 @@ const Settings = () => {
           step={0.1}
         />
       </div>
+
+      <div
+        className={`flex-col flex gap-4 ${
+          config.driveMode.id === DriveMode.MANUAL.id ? 'opacity-45' : ''
+        }`}
+      >
+        <Label className='text-md font-bold'>Controle PID</Label>
+
+        <div className='flex w-full gap-8'>
+          <div className='flex-col flex gap-4 items-center w-full'>
+            <Label className='text-md'>Kp: {config.pidControl.p}</Label>
+            <Slider
+              defaultValue={[config.steeringSensitivity]}
+              disabled={config.driveMode.id === DriveMode.MANUAL.id}
+              onValueChange={(value) => handlePidControlP(value)}
+              max={1}
+              min={0.1}
+              step={0.1}
+            />
+          </div>
+          <div className='flex-col flex gap-4 items-center w-full'>
+            <Label className='text-md'>Ki: {config.pidControl.i}</Label>
+            <Slider
+              defaultValue={[config.steeringSensitivity]}
+              disabled={config.driveMode.id === DriveMode.MANUAL.id}
+              onValueChange={(value) => handlePidControlI(value)}
+              max={1}
+              min={0.1}
+              step={0.1}
+            />
+          </div>
+          <div className='flex-col flex gap-4 items-center w-full'>
+            <Label className='text-md'>Kd: {config.pidControl.d}</Label>
+            <Slider
+              defaultValue={[config.steeringSensitivity]}
+              disabled={config.driveMode.id === DriveMode.MANUAL.id}
+              onValueChange={(value) => handlePidControlD(value)}
+              max={1}
+              min={0.1}
+              step={0.1}
+            />
+          </div>
+        </div>
+      </div>
+
       <Separator />
+      <div className='h-8' />
     </div>
   );
 };
