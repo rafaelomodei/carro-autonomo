@@ -12,10 +12,10 @@ export default function PageLayout({
   const pathname = usePathname();
 
   return (
-    <div className='flex flex-col items-center min-h-screen py-8'>
+    <div className='flex flex-col items-center h-full py-8'>
       <StatusBar />
       <div
-        className={`flex flex-col w-full flex-grow items-center ${
+        className={`flex flex-col w-full flex-grow items-center max-h-meddle ${
           pathname !== '/settings' ? 'justify-center' : ''
         }`}
       >

@@ -2,8 +2,13 @@
 
 import React from 'react';
 import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
+import { Button } from '@/components/ui/button';
+import { BiSolidJoystick } from 'react-icons/bi';
+import { useRouter } from 'next/navigation';
+import { WifiOff } from 'lucide-react';
 
 const Debug = () => {
+  const router = useRouter();
   const { isConnected, currentFrame } = useVehicleConfig();
 
   return (
@@ -14,15 +19,28 @@ const Debug = () => {
       }}
     >
       {currentFrame ? (
-        <img
-          src={currentFrame}
-          alt='Vídeo ao vivo'
-          className='absolute inset-0 object-cover w-full h-full'
-        />
+        <div className='relative w-full h-full'>
+          <img
+            src={currentFrame}
+            alt='Vídeo ao vivo'
+            className='absolute inset-0 object-cover w-full h-full py-4 rounded-[24px]'
+          />
+          <Button
+            className='absolute right-4 mt-8 gap-4 font-bold'
+            variant='outline'
+            onClick={() => router.push('/joystick')}
+          >
+            <BiSolidJoystick className='w-6 h-6' />
+            Abrir joystick
+          </Button>
+        </div>
       ) : (
-        <h2 className='text-white text-center'>
-          {!isConnected && 'Conecte a um servidor webscoket'}
-        </h2>
+        <div className='flex flex-col items-center justify-center gap-4'>
+          <WifiOff className='w-8 h-8' />
+          <h2 className='text-white text-center font-bold shadow-2xl'>
+            {!isConnected && 'Sem conexão com o veículo!'}
+          </h2>
+        </div>
       )}
     </div>
   );

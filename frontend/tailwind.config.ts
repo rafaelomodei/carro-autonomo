@@ -9,6 +9,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      maxHeight: {
+        meddle: 'calc(100vh - 152px)',
+      },
       colors: {
         background: {
           DEFAULT: '#121212',

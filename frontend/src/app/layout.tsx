@@ -17,7 +17,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang='pt-BR' suppressHydrationWarning>
-      <body suppressHydrationWarning>
+      <body className='h-screen overflow-hidden'>
         <ThemeProvider
           attribute='class'
           defaultTheme='system'
@@ -25,7 +25,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <NextAuthSessionProvider>
-            <div className='md:px-4 lg:px-8'>
+            <div className='h-full w-full flex flex-col md:px-4 lg:px-8'>
               <DestinationProvider>
                 <VehicleConfigProvider>{children}</VehicleConfigProvider>
               </DestinationProvider>

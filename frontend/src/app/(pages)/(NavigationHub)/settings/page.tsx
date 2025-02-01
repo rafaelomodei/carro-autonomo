@@ -69,7 +69,7 @@ const Settings = () => {
   };
 
   return (
-    <div className='flex flex-col max-w-lg w-full min-h-full gap-8 pt-16'>
+    <div className='flex flex-col max-w-lg w-full min-h-full overflow-y-auto gap-8 pt-16'>
       <div>
         <h1 className='text-3xl font-bold'>Configurações</h1>
         <Separator />

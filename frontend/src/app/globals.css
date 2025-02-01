@@ -10,6 +10,36 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+
+  ::-webkit-scrollbar {
+    width: 8px; /* Largura da barra de rolagem */
+    height: 8px; /* Altura da barra de rolagem horizontal */
+  }
+
+  /* background of the scrollbar except button or resizer */
+  ::-webkit-scrollbar-track {
+    background: var(--background); /* Usa a cor do tema ShadCN */
+    border-radius: 8px;
+  }
+
+  /* scrollbar itself */
+  ::-webkit-scrollbar-thumb {
+    background: var(--muted-foreground);
+    border-radius: 8px;
+    border: 2px solid var(--background); /* Suaviza a transição */
+  }
+
+  /* Efeito ao passar o mouse sobre a barra */
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(
+      --foreground
+    ); /* Um pouco mais escuro para feedback visual */
+  }
+
+  /* set button(top and bottom of the scrollbar) */
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
 }
 
 @layer base {
