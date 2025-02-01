@@ -7,6 +7,7 @@ import { BiSolidJoystick } from 'react-icons/bi';
 import { useRouter } from 'next/navigation';
 import { WifiOff } from 'lucide-react';
 import Image from 'next/image';
+import { Label } from '@/components/ui/label';
 
 const Debug = () => {
   const router = useRouter();
@@ -38,9 +39,9 @@ const Debug = () => {
       ) : (
         <div className='flex flex-col items-center justify-center gap-4'>
           <WifiOff className='w-8 h-8' />
-          <h2 className='text-white text-center font-bold shadow-2xl'>
+          <Label className='text-white text-center font-bold shadow-2xl'>
             {!isConnected && 'Sem conexão com o veículo!'}
-          </h2>
+          </Label>
         </div>
       )}
     </div>

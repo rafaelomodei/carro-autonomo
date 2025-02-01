@@ -54,6 +54,7 @@ interface VehicleConfigContextProps {
   isConnected: boolean;
   currentFrame: string | null;
   sendMessage: (payload: CommandPayload) => void;
+  sendConfig: () => void;
 }
 
 const VehicleConfigContext = createContext<VehicleConfigContextProps>(
@@ -84,7 +85,7 @@ export const VehicleConfigProvider = ({
     },
   });
 
-  const socket = useRef<WebSocket | null>();
+  const socket = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [currentFrame, setCurrentFrame] = useState<string | null>(null);
 
@@ -98,12 +99,13 @@ export const VehicleConfigProvider = ({
       socket.current.onopen = () => {
         setIsConnected(true);
         console.log('Conexão WebSocket estabelecida.');
+        sendConfig();
       };
 
       socket.current.onclose = () => {
         setIsConnected(false);
         console.log('Conexão WebSocket encerrada.');
-        socket.current = null; // Reinicia a instância ao desconectar
+        socket.current = null;
       };
 
       socket.current.onmessage = async (event) => {
@@ -144,18 +146,45 @@ export const VehicleConfigProvider = ({
     }
   };
 
+  const sendConfig = () => {
+    if (socket.current?.readyState === WebSocket.OPEN) {
+      const configPayload = {
+        type: 'config',
+        payload: {
+          speedLimit: config.speedLimit,
+          driveMode: config.driveMode.id,
+          steeringSensitivity: config.steeringSensitivity,
+          pidControl: {
+            p: config.pidControl.p,
+            i: config.pidControl.i,
+            d: config.pidControl.d,
+          },
+        },
+      };
+
+      socket.current.send(JSON.stringify(configPayload));
+      console.info('Configurações enviadas:', configPayload);
+    } else {
+      console.error('WebSocket não está conectado para enviar configurações.');
+    }
+  };
+
+  useEffect(() => {
+    sendConfig();
+  }, [config.speedLimit, config.steeringSensitivity, config.pidControl]);
+
   const handleKeyDown = (event: KeyboardEvent) => {
-    console.info('Tecla prescionada: ', event.key);
+    console.info('Tecla pressionada: ', event.key);
 
     const keyMap: Record<string, CommandPayload> = {
       w: { type: 'commands', payload: [{ action: 'accelerate', speed: 200 }] }, // Frente
       s: { type: 'commands', payload: [{ action: 'accelerate', speed: -200 }] }, // Ré
-      a: { type: 'commands', payload: [{ action: 'turn', direction: 'left' }] }, // Virar à esquerda
+      a: { type: 'commands', payload: [{ action: 'turn', direction: 'left' }] },
       d: {
         type: 'commands',
         payload: [{ action: 'turn', direction: 'right' }],
       }, // Virar à direita
-      ' ': { type: 'commands', payload: [{ action: 'accelerate', speed: 0 }] }, // Parar (aceleração 0)
+      ' ': { type: 'commands', payload: [{ action: 'accelerate', speed: 0 }] }, // Parar
     };
 
     const command = keyMap[event.key?.toLowerCase()];
@@ -165,7 +194,6 @@ export const VehicleConfigProvider = ({
   };
 
   useEffect(() => {
-    // Garante que o listener seja configurado globalmente
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -180,6 +208,7 @@ export const VehicleConfigProvider = ({
         isConnected,
         currentFrame,
         sendMessage,
+        sendConfig,
       }}
     >
       {children}

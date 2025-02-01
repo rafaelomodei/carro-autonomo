@@ -21,7 +21,7 @@ const Home = () => {
       <div className='flex w-full items-center justify-center'>
         <h2>Velocidade</h2>
       </div>
-      <div className='flex flex-col w-[60%] items-center justify-between h-auto  py-8'>
+      <div className='flex flex-col w-[55%] items-center justify-between h-auto  py-8'>
         <NotificationPanel />
         <Image
           className='object-cover'

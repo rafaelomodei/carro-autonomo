@@ -109,7 +109,7 @@ const Settings = () => {
 
       <div
         className={`flex-col flex gap-4 ${
-          config.driveMode.id !== DriveMode.MANUAL.id ? 'opacity-45' : ''
+          config.driveMode.id !== DriveMode.MANUAL.id ? 'opacity-35' : ''
         }`}
       >
         <Label className='text-md'>
@@ -128,7 +128,7 @@ const Settings = () => {
 
       <div
         className={`flex-col flex gap-4 ${
-          config.driveMode.id === DriveMode.MANUAL.id ? 'opacity-45' : ''
+          config.driveMode.id === DriveMode.MANUAL.id ? 'opacity-35' : ''
         }`}
       >
         <Label className='text-md font-bold'>Controle PID</Label>
