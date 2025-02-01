@@ -1,3 +1,0 @@
-/home/pi/Documents/projects/carro-autonomo/autonomous_car/build/CMakeFiles/rebuild_cache.dir
-/home/pi/Documents/projects/carro-autonomo/autonomous_car/build/CMakeFiles/edit_cache.dir
-/home/pi/Documents/projects/carro-autonomo/autonomous_car/build/CMakeFiles/autonomous_car.dir
