@@ -5,12 +5,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  Rocket,
   StopCircle,
 } from 'lucide-react';
 import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 
 const Joystick = () => {
   const { sendMessage } = useVehicleConfig();

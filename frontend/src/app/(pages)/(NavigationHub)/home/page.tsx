@@ -1,7 +1,6 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { ModeToggle } from '@/components/atomics/ModeToggle';
 import { RunDestination } from '@/components/organism/RunDestination';
 import { WithoutDestination } from '@/components/organism/WithoutDestination';
 import { useDestination } from '@/providers/DestinationProvider';

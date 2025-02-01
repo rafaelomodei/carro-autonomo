@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { BiSolidJoystick } from 'react-icons/bi';
 import { useRouter } from 'next/navigation';
 import { WifiOff } from 'lucide-react';
+import Image from 'next/image';
 
 const Debug = () => {
   const router = useRouter();
@@ -20,7 +21,7 @@ const Debug = () => {
     >
       {currentFrame ? (
         <div className='relative w-full h-full'>
-          <img
+          <Image
             src={currentFrame}
             alt='Vídeo ao vivo'
             className='absolute inset-0 object-cover w-full h-full py-4 rounded-[24px]'

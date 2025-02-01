@@ -25,7 +25,7 @@ interface IPidControl {
   d: number;
 }
 
-export const VEHICLE_CAR_CONNECTION_URL = 'ws://192.168.3.113:8080';
+export const VEHICLE_CAR_CONNECTION_URL = '';
 
 export const DriveMode: Record<'MANUAL' | 'AUTONOMOUS', IDriveMode> = {
   MANUAL: {
