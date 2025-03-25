@@ -38,10 +38,12 @@ const StatusBar = () => {
 
   return (
     <div className='flex w-full items-center justify-end  gap-8 '>
-      <div className='flex items-center space-x-2 text-xs'>
-        <Activity className='w-4 h-4' />
-        <span>15 FPS</span>
-      </div>
+      {vehicleConfig.currentFrame && (
+        <div className='flex items-center space-x-2 text-xs'>
+          <Activity className='w-4 h-4' />
+          <span>{`${vehicleConfig.currentFrame} FPS`}</span>
+        </div>
+      )}
 
       <div className='flex items-center space-x-2 text-xs'>
         {vehicleConfig.config.driveMode.icon}

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
 import { Button } from '@/components/ui/button';
 import { BiSolidJoystick } from 'react-icons/bi';
@@ -12,20 +12,42 @@ import { Label } from '@/components/ui/label';
 const Debug = () => {
   const router = useRouter();
   const { isConnected, currentFrame } = useVehicleConfig();
+  const [frame, setFrame] = useState<string | null>(null);
+  const requestRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let lastFrame = '';
+
+    const updateFrame = () => {
+      if (currentFrame && currentFrame !== lastFrame) {
+        setFrame(currentFrame);
+        lastFrame = currentFrame;
+      }
+      requestRef.current = requestAnimationFrame(updateFrame);
+    };
+
+    requestRef.current = requestAnimationFrame(updateFrame);
+
+    return () => {
+      if (requestRef.current !== null) {
+        cancelAnimationFrame(requestRef.current);
+      }
+    };
+  }, [currentFrame]);
 
   return (
     <div
       className='relative flex items-center justify-center w-full'
-      style={{
-        height: 'calc(100vh - 152px)', // Cálculo direto da altura
-      }}
+      style={{ height: 'calc(100vh - 152px)' }}
     >
-      {currentFrame ? (
+      {frame ? (
         <div className='relative w-full h-full'>
           <Image
-            src={currentFrame}
+            src={frame}
+            width={1280}
+            height={720}
             alt='Vídeo ao vivo'
-            className='absolute inset-0 object-cover w-full h-full py-4 rounded-[24px]'
+            className='absolute inset-0 object-cover w-full h-full py-4 rounded-[24px] scale-x-[-1]'
           />
           <Button
             className='absolute right-4 mt-8 gap-4 font-bold'
@@ -39,7 +61,7 @@ const Debug = () => {
       ) : (
         <div className='flex flex-col items-center justify-center gap-4'>
           <WifiOff className='w-8 h-8' />
-          <Label className='text-white text-center font-bold shadow-2xl'>
+          <Label className='text-center font-bold shadow-2xl'>
             {!isConnected && 'Sem conexão com o veículo!'}
           </Label>
         </div>

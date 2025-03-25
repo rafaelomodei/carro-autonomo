@@ -19,7 +19,8 @@ const config: Config = {
         },
         foreground: {
           DEFAULT: '#ffffff',
-          light: '#1a1a1a',
+          light: '#181818FF',
+          black: '#EEEEEEFF',
         },
         primary: {
           DEFAULT: '#27272A',

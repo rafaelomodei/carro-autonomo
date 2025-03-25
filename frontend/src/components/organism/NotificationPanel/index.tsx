@@ -4,7 +4,7 @@ import Image from 'next/image';
 
 const NotificationPanel = () => {
   return (
-    <div className='flex items-center justify-center gap-4 rounded-md w-fit min-w-72 p-4 my-8 min-h16 bg-foreground-light'>
+    <div className='flex items-center justify-center gap-4 rounded-md w-fit min-w-72 p-4 my-8 min-h16 bg-foreground-black dark:bg-foreground-light'>
       <Image
         width={60}
         height={60}

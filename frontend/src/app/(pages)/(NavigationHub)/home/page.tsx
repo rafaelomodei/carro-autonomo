@@ -19,7 +19,7 @@ const Home = () => {
   return (
     <div className='flex items-center  justify-between w-full pb-16'>
       <div className='flex w-full items-center justify-center'>
-        <h2>Velocidade</h2>
+        <h2>Veículo está operando corretamente</h2>
       </div>
       <div className='flex flex-col w-[55%] items-center justify-between h-auto  py-8'>
         <NotificationPanel />
