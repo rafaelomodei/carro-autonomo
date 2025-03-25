@@ -8,11 +8,14 @@ import { useRouter } from 'next/navigation';
 import { WifiOff } from 'lucide-react';
 import Image from 'next/image';
 import { Label } from '@/components/ui/label';
+import SteeringWheel from '@/components/molecules/SteeringWheel';
 
 const Debug = () => {
   const router = useRouter();
   const { isConnected, currentFrame } = useVehicleConfig();
-  const [frame, setFrame] = useState<string | null>(null);
+  const [frame, setFrame] = useState<string | null>(
+    'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMDmS_zioHW1hL8bhKdt3aX4xcc4Ou-dFH8Q&s'
+  );
   const requestRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -57,6 +60,8 @@ const Debug = () => {
             <BiSolidJoystick className='w-6 h-6' />
             Abrir joystick
           </Button>
+
+          <SteeringWheel angle={1} />
         </div>
       ) : (
         <div className='flex flex-col items-center justify-center gap-4'>
