@@ -9,6 +9,7 @@ import { WifiOff } from 'lucide-react';
 import Image from 'next/image';
 import { Label } from '@/components/ui/label';
 import SteeringWheel from '@/components/molecules/SteeringWheel';
+import VehicleLogs from '@/components/organism/VehicleLogs';
 
 const Debug = () => {
   const router = useRouter();
@@ -62,6 +63,7 @@ const Debug = () => {
           </Button>
 
           <SteeringWheel angle={1} />
+          <VehicleLogs />
         </div>
       ) : (
         <div className='flex flex-col items-center justify-center gap-4'>
