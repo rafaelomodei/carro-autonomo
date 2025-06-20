@@ -18,7 +18,7 @@ void VideoStreamHandler::startStreaming() {
   if (isStreaming)
     return;
 
-  isStreaming = true;
+  isStreaming     = true;
   streamingThread = std::thread(&VideoStreamHandler::streamLoop, this);
 }
 
@@ -36,8 +36,8 @@ void VideoStreamHandler::streamLoop() {
 
   // Configuração adicional
   cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
-  cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
-  cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+  cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
+  cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
   cap.set(cv::CAP_PROP_FPS, 30);
 
   if (!cap.isOpened()) {

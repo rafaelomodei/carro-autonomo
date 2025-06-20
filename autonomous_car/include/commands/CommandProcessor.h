@@ -1,6 +1,7 @@
 #ifndef COMMAND_PROCESSOR_H
 #define COMMAND_PROCESSOR_H
 
+#include "../config/VehicleConfig.h"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -29,6 +30,7 @@ private:
   bool                               isCommandMessage(const rapidjson::Document &doc) const;
   void                               processPayload(const rapidjson::Value &payload);
   void                               processSingleCommand(const rapidjson::Value &cmd);
+  void                               processConfig(const rapidjson::Value &configPayload);
 };
 
 #endif // COMMAND_PROCESSOR_H

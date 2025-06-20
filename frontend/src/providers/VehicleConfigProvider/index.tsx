@@ -12,6 +12,12 @@ import {
   SetStateAction,
 } from 'react';
 import { isValidWebSocketUrl } from '@/lib/websocket';
+import {
+  mockRecognizedSignals,
+  SignalType,
+  TRAFFIC_SIGNS,
+  TrafficSignal,
+} from '@/utils/constants/trafficSigns';
 
 interface IDriveMode {
   id: string;
@@ -50,9 +56,10 @@ export interface VehicleConfig {
 
 interface VehicleConfigContextProps {
   config: VehicleConfig;
-  setConfig: Dispatch<SetStateAction<VehicleConfig>>;
   isConnected: boolean;
   currentFrame: string | null;
+  recognizedSignals: Record<SignalType, TrafficSignal[]>;
+  setConfig: Dispatch<SetStateAction<VehicleConfig>>;
   sendMessage: (payload: CommandPayload) => void;
   sendConfig: () => void;
 }
@@ -73,6 +80,10 @@ export const VehicleConfigProvider = ({
 }: {
   children: ReactNode;
 }) => {
+  const [recognizedSignals, setRecognizedSignals] = useState<
+    Record<SignalType, TrafficSignal[]>
+  >(mockRecognizedSignals);
+
   const [config, setConfig] = useState<VehicleConfig>({
     speedLimit: 50,
     driveMode: DriveMode.MANUAL,
@@ -120,7 +131,44 @@ export const VehicleConfigProvider = ({
           };
           reader.readAsDataURL(data); // Converte o Blob para uma URL de dados base64
         } else if (typeof data === 'string') {
-          console.warn('Mensagem inesperada recebida como string:', data);
+          try {
+            const parsed = JSON.parse(data);
+
+            if (parsed.type === 'signals') {
+              const verticalSignals: TrafficSignal[] =
+                parsed.vertical
+                  ?.map((entry: { id: string; confidence: number }) => {
+                    const info = TRAFFIC_SIGNS.find(
+                      (signal) =>
+                        signal.id === entry.id && signal.type === 'VERTICAL'
+                    );
+                    return info
+                      ? { ...info, confidence: entry.confidence }
+                      : null;
+                  })
+                  .filter(Boolean) ?? [];
+
+              const horizontalSignals: TrafficSignal[] =
+                parsed.horizontal
+                  ?.map((entry: { id: string; confidence: number }) => {
+                    const info = TRAFFIC_SIGNS.find(
+                      (signal) =>
+                        signal.id === entry.id && signal.type === 'HORIZONTAL'
+                    );
+                    return info
+                      ? { ...info, confidence: entry.confidence }
+                      : null;
+                  })
+                  .filter(Boolean) ?? [];
+
+              setRecognizedSignals({
+                VERTICAL: verticalSignals,
+                HORIZONTAL: horizontalSignals,
+              });
+            }
+          } catch (err) {
+            console.warn('Erro ao processar mensagem de sinal:', err);
+          }
         }
       };
 
@@ -209,6 +257,7 @@ export const VehicleConfigProvider = ({
         currentFrame,
         sendMessage,
         sendConfig,
+        recognizedSignals,
       }}
     >
       {children}

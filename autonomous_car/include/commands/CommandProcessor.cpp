@@ -28,6 +28,28 @@ void CommandProcessor::processCommand(const std::string &jsonCommand) {
   processPayload(document->GetObject()["payload"]);
 }
 
+void CommandProcessor::processConfig(const rapidjson::Value &configPayload) {
+  if (!configPayload.IsObject()) {
+    std::cerr << "Configuração inválida recebida." << std::endl;
+    return;
+  }
+
+  double speedLimit          = configPayload["speedLimit"].GetDouble();
+  double steeringSensitivity = configPayload["steeringSensitivity"].GetDouble();
+
+  PidControl pid;
+  pid.p = configPayload["pidControl"]["p"].GetDouble();
+  pid.i = configPayload["pidControl"]["i"].GetDouble();
+  pid.d = configPayload["pidControl"]["d"].GetDouble();
+
+  // Atualiza a configuração global do veículo
+  VehicleConfig::getInstance().updateConfig(speedLimit, steeringSensitivity, pid);
+
+  std::cout << "Configuração atualizada: Velocidade " << speedLimit
+            << ", Sensibilidade " << steeringSensitivity
+            << ", PID(" << pid.p << ", " << pid.i << ", " << pid.d << ")" << std::endl;
+}
+
 std::optional<rapidjson::Document> CommandProcessor::parseJson(const std::string &jsonString) const {
   rapidjson::Document doc;
   if (doc.Parse(jsonString.c_str()).HasParseError()) {

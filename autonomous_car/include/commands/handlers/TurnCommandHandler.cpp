@@ -15,22 +15,18 @@ TurnCommandHandler::TurnCommandHandler()
 
 void TurnCommandHandler::handle(const rapidjson::Value &cmd) const {
   if (cmd.HasMember("direction") && cmd["direction"].IsString()) {
-    std::string direction = cmd["direction"].GetString();
-    std::cout << "Comando recebido: " << direction << std::endl;
+    std::string direction   = cmd["direction"].GetString();
+    double      sensitivity = VehicleConfig::getInstance().steeringSensitivity; // Obtém a sensibilidade
+
+    int increment = static_cast<int>(config.increment * sensitivity); // Ajusta conforme sensibilidade
 
     if (direction == "left") {
-      currentPulse = std::max(config.minPulse, currentPulse - config.increment); // Decrementa até o limite mínimo
-      setServoPulse(currentPulse);
-      std::cout << "Servo ajustado para " << currentPulse << " µs (esquerda)." << std::endl;
+      currentPulse = std::max(config.minPulse, currentPulse - increment);
     } else if (direction == "right") {
-      currentPulse = std::min(config.maxPulse, currentPulse + config.increment); // Incrementa até o limite máximo
-      setServoPulse(currentPulse);
-      std::cout << "Servo ajustado para " << currentPulse << " µs (direita)." << std::endl;
-    } else {
-      std::cerr << "Direção inválida: " << direction << std::endl;
+      currentPulse = std::min(config.maxPulse, currentPulse + increment);
     }
-  } else {
-    std::cerr << "Comando 'turn' inválido: falta 'direction'." << std::endl;
+
+    setServoPulse(currentPulse);
   }
 }
 

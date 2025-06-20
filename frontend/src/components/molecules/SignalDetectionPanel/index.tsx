@@ -2,13 +2,11 @@
 
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
+import { TrafficSignal } from '@/utils/constants/trafficSigns';
 
-type SignalItem = {
-  confidence: number; // 0 a 100
-  label: string;
-  iconUrl?: string;
+interface SignalItem extends TrafficSignal {
   color?: 'green' | 'orange' | 'red' | 'gray';
-};
+}
 
 interface SignalDetectionPanelProps {
   signs: SignalItem[];
@@ -29,7 +27,7 @@ const SignalDetectionPanel: React.FC<SignalDetectionPanelProps> = ({
     <div className='flex flex-col gap-2'>
       {signs.map((item, index) => (
         <div key={index} className='flex items-center gap-2'>
-          <Badge className={`rounded-md ${getBadgeColor(item.confidence)}`}>
+          <Badge className={`rounded-md ${getBadgeColor(item.confidence!)}`}>
             {item.confidence}%
           </Badge>
           <p>|</p>
