@@ -41,7 +41,6 @@ install_package "pigpio"
 install_package "python3-pigpio"
 install_package "libopencv-dev"
 install_package "v4l-utils"
-install_package "libboost-all-dev"
 install_package "libkissfft-dev"
 install_package "libcodec2-dev"
 
