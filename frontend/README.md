@@ -1,17 +1,30 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment Variables
+
+Create a `.env.local` file in the `frontend` directory with the Firebase credentials used by the app. The following variables are required:
+
+```bash
+FIREBASE_API_KEY=
+FIREBASE_AUTH_DOMAIN=
+FIREBASE_PROJECT_ID=
+FIREBASE_STORAGE_BUCKET=
+FIREBASE_MESSAGING_SENDER_ID=
+FIREBASE_APP_ID=
+```
+
+Refer to your Firebase project settings for the values of each variable.
+
 ## Getting Started
 
 First, run the development server:
 
 ```bash
+# with npm
 npm run dev
-# or
-yarn dev
-# or
+
+# with pnpm
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
