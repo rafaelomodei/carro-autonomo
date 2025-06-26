@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <pigpio.h>
+#include <algorithm>    // para std::clamp
 
 #define SERVO_PIN 18 // Pino GPIO usado pelo servo
 #define MIN_PULSE 1100
@@ -19,11 +20,13 @@ void TurnCommandHandler::handle(const rapidjson::Value &cmd) const {
     std::cout << "Comando recebido: " << direction << std::endl;
 
     if (direction == "left") {
-      currentPulse = std::max(config.minPulse, currentPulse - config.increment); // Decrementa até o limite mínimo
+      currentPulse = std::clamp(currentPulse - config.increment,
+                                   config.minPulse, config.maxPulse);
       setServoPulse(currentPulse);
       std::cout << "Servo ajustado para " << currentPulse << " µs (esquerda)." << std::endl;
     } else if (direction == "right") {
-      currentPulse = std::min(config.maxPulse, currentPulse + config.increment); // Incrementa até o limite máximo
+      currentPulse = std::clamp(currentPulse + config.increment,
+                                config.minPulse, config.maxPulse);
       setServoPulse(currentPulse);
       std::cout << "Servo ajustado para " << currentPulse << " µs (direita)." << std::endl;
     } else {
@@ -48,10 +51,7 @@ void TurnCommandHandler::setupGPIO() const {
 }
 
 void TurnCommandHandler::setServoPulse(int pulseWidth) const {
-  if (pulseWidth < MIN_PULSE || pulseWidth > MAX_PULSE) {
-    std::cerr << "Erro: Largura de pulso inválida (" << pulseWidth << " µs). Deve estar entre "
-              << MIN_PULSE << " e " << MAX_PULSE << " µs." << std::endl;
-    return;
-  }
+  // clamp no intervalo válido antes de chamar o driver
+  pulseWidth = std::clamp(pulseWidth, MIN_PULSE, MAX_PULSE);
   gpioServo(SERVO_PIN, pulseWidth);
 }
