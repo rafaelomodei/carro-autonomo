@@ -22,20 +22,18 @@ int main() {
     VehicleConfig &config = VehicleConfig::getInstance();
     (void)config; // apenas para evitar aviso se não usado
 
-    std::thread wsThread([&] { ws.start(); });
+    std::thread wsThreadObj([&] { ws.start(); });
 
     VideoStreamHandler video(0, [&](const std::string &frame) {
         ws.sendFrame(frame);
     });
     video.startStreaming();
 
-    std::thread wsThread([&] { ws.start(); });
-
     while (running) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     video.stopStreaming();
-    wsThread.join();
+    wsThreadObj.join();
     return 0;
 }
