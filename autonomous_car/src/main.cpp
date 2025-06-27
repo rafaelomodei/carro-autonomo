@@ -1,26 +1,54 @@
 #include "commands/CommandProcessor.h"
 #include "managers/WebSocketManager.h"
 #include "video/VideoStreamHandler.h"
-#include <iostream>
+#include <atomic>
+#include <chrono>
 #include <csignal>
+#include <iostream>
+#include <thread>
+#include <pigpio.h>            // se já não estava incluso em algum handler
+
+// flag global para Ctrl-C
+std::atomic<bool> stop(false);
+void sigHandler(int) { stop = true; }
 
 int main() {
-  int port = 8080;
+    /* 1. Captura Ctrl-C */
+    std::signal(SIGINT, sigHandler);
 
-  CommandProcessor commandProcessor;
-  WebSocketManager wsManager(port);
+    /* 2. Inicializa pigpio uma única vez */
+    if (gpioInitialise() < 0) {
+        std::cerr << "Falha ao iniciar pigpio\n";
+        return 1;
+    }
 
-  wsManager.setOnMessageCallback([&commandProcessor](const std::string &message) {
-    commandProcessor.processCommand(message);
-  });
+    /* 3. Cria o processamento de comandos */
+    CommandProcessor commandProcessor;
 
-  // Inicia o streaming de vídeo e transmite via WebSocket
-  VideoStreamHandler videoStreamHandler(4, [&wsManager](const std::string &frameData) {
-    wsManager.sendFrame(frameData);
-  });
+    /* 4. WebSocket em porta 8080 */
+    WebSocketManager wsManager(8080);
+    wsManager.setOnMessageCallback(
+        [&commandProcessor](const std::string &msg) {
+            commandProcessor.processCommand(msg);
+        });
 
-  videoStreamHandler.startStreaming();
-  wsManager.start();
+    /* 5. Câmera 4 -> callback envia quadro */
+    VideoStreamHandler video(4, [&wsManager](const std::string &frame) {
+        wsManager.sendFrame(frame);
+    });
 
-  return 0;
+    /* 6. Sobe as threads */
+    video.startStreaming();
+    std::thread wsThread([&] { wsManager.start(); });   // io_context.run()
+
+    /* 7. Loop de espera – Ctrl-C muda stop=false -> true */
+    while (!stop) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    /* 8. Encerramento gracioso */
+    video.stopStreaming();          // pára loop da câmera
+    // opcional: wsManager.stop();  // se criar método para dar ioContext.stop()
+    wsThread.join();
+    gpioTerminate();                // fecha pigpio
+
+    return 0;
 }
