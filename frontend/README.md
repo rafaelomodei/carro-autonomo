@@ -1,17 +1,30 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment Variables
+
+Create a `.env.local` file in the `frontend` directory with the Firebase credentials used by the app. The following variables are required:
+
+```bash
+FIREBASE_API_KEY=
+FIREBASE_AUTH_DOMAIN=
+FIREBASE_PROJECT_ID=
+FIREBASE_STORAGE_BUCKET=
+FIREBASE_MESSAGING_SENDER_ID=
+FIREBASE_APP_ID=
+```
+
+Refer to your Firebase project settings for the values of each variable.
+
 ## Getting Started
 
 First, run the development server:
 
 ```bash
+# with npm
 npm run dev
-# or
-yarn dev
-# or
+
+# with pnpm
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
@@ -34,3 +47,10 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Skipping Vercel Builds
+
+This repository includes a `vercel.json` file configured with an ignored build step. The
+`scripts/skip-frontend-build.sh` script stops the Vercel build when no files inside the
+`frontend` directory changed. This helps avoid unnecessary deployments when working on
+other parts of the project.

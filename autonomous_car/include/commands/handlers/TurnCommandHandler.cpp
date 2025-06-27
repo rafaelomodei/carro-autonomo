@@ -1,4 +1,5 @@
 #include "TurnCommandHandler.h"
+#include <algorithm> // para std::clamp
 #include <cstdlib>
 #include <iostream>
 #include <pigpio.h>
@@ -44,10 +45,7 @@ void TurnCommandHandler::setupGPIO() const {
 }
 
 void TurnCommandHandler::setServoPulse(int pulseWidth) const {
-  if (pulseWidth < MIN_PULSE || pulseWidth > MAX_PULSE) {
-    std::cerr << "Erro: Largura de pulso inválida (" << pulseWidth << " µs). Deve estar entre "
-              << MIN_PULSE << " e " << MAX_PULSE << " µs." << std::endl;
-    return;
-  }
+  // clamp no intervalo válido antes de chamar o driver
+  pulseWidth = std::clamp(pulseWidth, MIN_PULSE, MAX_PULSE);
   gpioServo(SERVO_PIN, pulseWidth);
 }
