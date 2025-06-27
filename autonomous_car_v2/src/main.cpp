@@ -29,6 +29,8 @@ int main() {
     });
     video.startStreaming();
 
+    std::thread wsThread([&] { ws.start(); });
+
     while (running) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }

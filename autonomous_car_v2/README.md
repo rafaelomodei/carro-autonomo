@@ -2,6 +2,7 @@
 
 Esta pasta contém a segunda versão simplificada do projeto do carro autônomo. Além do servidor WebSocket, esta versão já possui captura de vídeo para transmissão aos clientes.
 
+
 ## Como compilar
 
 ```bash

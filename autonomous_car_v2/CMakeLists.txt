@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Futuras dependencias podem ser adicionadas aqui
 find_package(OpenCV REQUIRED)
+
 # find_library(PIGPIO_LIB pigpio REQUIRED)
 
 include_directories(
