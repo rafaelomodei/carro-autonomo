@@ -47,3 +47,10 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Skipping Vercel Builds
+
+This repository includes a `vercel.json` file configured with an ignored build step. The
+`scripts/skip-frontend-build.sh` script stops the Vercel build when no files inside the
+`frontend` directory changed. This helps avoid unnecessary deployments when working on
+other parts of the project.
