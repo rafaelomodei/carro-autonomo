@@ -1,6 +1,7 @@
 # Autonomous Car v2
 
-Esta pasta contém uma versão simplificada do projeto do carro autônomo, focada apenas no servidor WebSocket. Outras funcionalidades (como controle de motores e câmera) serão adicionadas futuramente.
+Esta pasta contém a segunda versão simplificada do projeto do carro autônomo. Além do servidor WebSocket, esta versão já possui captura de vídeo para transmissão aos clientes.
+
 
 ## Como compilar
 
