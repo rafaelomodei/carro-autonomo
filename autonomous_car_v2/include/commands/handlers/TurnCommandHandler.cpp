@@ -22,8 +22,10 @@ void TurnCommandHandler::handle(const rapidjson::Value &cmd) const {
     int increment = static_cast<int>(config.increment * sensitivity); // Ajusta conforme sensibilidade
 
     if (direction == "left") {
+      std::cout << "Comando recebido: Virar à esquerda" << std::endl;
       currentPulse = std::max(config.minPulse, currentPulse - increment);
     } else if (direction == "right") {
+      std::cout << "Comando recebido: Virar à direita" << std::endl;
       currentPulse = std::min(config.maxPulse, currentPulse + increment);
     }
 
