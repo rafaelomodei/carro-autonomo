@@ -1,10 +1,12 @@
-#include "managers/WebSocketManager.h"
+#include "commands/CommandProcessor.h"
 #include "config/VehicleConfig.h"
+#include "managers/WebSocketManager.h"
 #include "video/VideoStreamHandler.h"
 #include <atomic>
 #include <chrono>
 #include <csignal>
 #include <iostream>
+#include <pigpio.h>
 #include <thread>
 
 std::atomic<bool> running(true);
@@ -14,17 +16,21 @@ void handleSignal(int) { running = false; }
 int main() {
     std::signal(SIGINT, handleSignal);
 
-    WebSocketManager ws(8080);
-    ws.setOnMessageCallback([](const std::string &msg) {
-        std::cout << "Received: " << msg << std::endl;
-    });
+    if (gpioInitialise() < 0) {
+        std::cerr << "Falha ao iniciar pigpio" << std::endl;
+        return 1;
+    }
 
-    VehicleConfig &config = VehicleConfig::getInstance();
-    (void)config; // apenas para evitar aviso se não usado
+    CommandProcessor commandProcessor;
+
+    WebSocketManager ws(8080);
+    ws.setOnMessageCallback([&](const std::string &msg) {
+        commandProcessor.processCommand(msg);
+    });
 
     std::thread wsThreadObj([&] { ws.start(); });
 
-    VideoStreamHandler video(0, [&](const std::string &frame) {
+    VideoStreamHandler video(4, [&](const std::string &frame) {
         ws.sendFrame(frame);
     });
     video.startStreaming();
@@ -35,5 +41,6 @@ int main() {
 
     video.stopStreaming();
     wsThreadObj.join();
+    gpioTerminate();
     return 0;
 }
