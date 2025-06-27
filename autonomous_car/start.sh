@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Definir cores
 GREEN="\033[1;32m"
@@ -10,16 +11,13 @@ RESET="\033[0m"
 log_info() {
   echo -e "${BLUE}ℹ️ $1${RESET}"
 }
-
 log_success() {
   echo -e "${GREEN}✅ $1${RESET}"
 }
-
 log_error() {
   echo -e "${RED}❌ $1${RESET}"
 }
 
-# Iniciar o programa
 log_info " Ligando o veículo..."
 
 # Verificar se o diretório de build existe
@@ -32,10 +30,30 @@ else
 fi
 
 # Verificar se o executável existe
-if [ -f "./autonomous_car" ]; then
+if [ -f ./autonomous_car ]; then
   log_info " Iniciando o programa..."
-  ./autonomous_car
-  log_success " Programa encerrado."
+
+  ./autonomous_car &
+  CAR_PID=$!
+
+  # Função para encerrar o processo de forma graciosa
+  cleanup() {
+    if kill -0 "$CAR_PID" 2>/dev/null; then
+      log_info " Encerrando programa..."
+      kill "$CAR_PID" 2>/dev/null
+      wait "$CAR_PID" 2>/dev/null || true
+    fi
+  }
+  trap cleanup SIGINT SIGTERM
+
+  # Aguarda término do executável
+  wait "$CAR_PID"
+  STATUS=$?
+  if [ $STATUS -ne 0 ]; then
+    log_error " Programa finalizado com erro ($STATUS)."
+  else
+    log_success " Programa encerrado."
+  fi
 else
   log_error " Executável 'autonomous_car' não encontrado. Certifique-se de que o build foi concluído com sucesso."
   exit 1
