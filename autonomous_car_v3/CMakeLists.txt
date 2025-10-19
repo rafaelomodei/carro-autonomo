@@ -19,6 +19,7 @@ add_executable(${PROJECT_NAME}
     src/commands/TurnRightCommand.cpp
     src/commands/CenterSteeringCommand.cpp
     src/services/WebSocketServer.cpp
+    src/config/ConfigurationManager.cpp
 )
 
 target_include_directories(${PROJECT_NAME}

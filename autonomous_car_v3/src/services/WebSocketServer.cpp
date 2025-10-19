@@ -5,8 +5,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -14,12 +16,72 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "controllers/CommandDispatcher.hpp"
 
 namespace {
 constexpr char kWebSocketGuid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+std::string trim(const std::string &value) {
+    auto begin = value.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos) {
+        return "";
+    }
+    auto end = value.find_last_not_of(" \t\r\n");
+    return value.substr(begin, end - begin + 1);
+}
+
+enum class MessageChannel { Command, Config, Unknown };
+
+struct ParsedMessage {
+    MessageChannel channel{MessageChannel::Unknown};
+    std::string key;
+    std::optional<std::string> value;
+};
+
+std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
+    auto trimmed = trim(payload);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+
+    auto delimiter_pos = trimmed.find(':');
+    if (delimiter_pos == std::string::npos) {
+        ParsedMessage parsed;
+        parsed.channel = MessageChannel::Command;
+        parsed.key = trimmed;
+        return parsed;
+    }
+
+    auto channel_token = trim(trimmed.substr(0, delimiter_pos));
+    std::string normalized_channel = channel_token;
+    std::transform(normalized_channel.begin(), normalized_channel.end(), normalized_channel.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    auto remainder = trim(trimmed.substr(delimiter_pos + 1));
+
+    if (normalized_channel == "command") {
+        ParsedMessage parsed;
+        parsed.channel = MessageChannel::Command;
+        parsed.key = remainder;
+        return parsed;
+    }
+
+    if (normalized_channel == "config") {
+        auto equals_pos = remainder.find('=');
+        if (equals_pos == std::string::npos) {
+            return std::nullopt;
+        }
+        ParsedMessage parsed;
+        parsed.channel = MessageChannel::Config;
+        parsed.key = trim(remainder.substr(0, equals_pos));
+        parsed.value = trim(remainder.substr(equals_pos + 1));
+        return parsed;
+    }
+
+    return std::nullopt;
+}
 
 class Sha1 {
 public:
@@ -305,12 +367,15 @@ void sendCloseFrame(int client_fd) {
 
 namespace autonomous_car::services {
 
-WebSocketServer::WebSocketServer(const std::string &host, int port, controllers::CommandDispatcher &dispatcher)
+WebSocketServer::WebSocketServer(const std::string &host, int port, controllers::CommandDispatcher &dispatcher,
+                                 ConfigUpdateHandler config_handler)
     : host_{host},
       port_{port},
       dispatcher_{dispatcher},
+      config_handler_{std::move(config_handler)},
       running_{false},
-      server_fd_{-1} {}
+      server_fd_{-1},
+      active_client_fd_{-1} {}
 
 WebSocketServer::~WebSocketServer() {
     stop();
@@ -326,6 +391,10 @@ void WebSocketServer::start() {
 void WebSocketServer::stop() {
     if (!running_.exchange(false)) {
         return;
+    }
+    int client_fd = active_client_fd_.exchange(-1);
+    if (client_fd >= 0) {
+        shutdown(client_fd, SHUT_RDWR);
     }
     int fd = server_fd_.load();
     if (fd >= 0) {
@@ -379,21 +448,26 @@ void WebSocketServer::run() {
             continue;
         }
 
+        active_client_fd_.store(client_fd);
+
         auto request_opt = readHttpRequest(client_fd);
         if (!request_opt) {
             close(client_fd);
+            active_client_fd_.store(-1);
             continue;
         }
 
         auto key_opt = extractHeader(*request_opt, "Sec-WebSocket-Key");
         if (!key_opt) {
             close(client_fd);
+            active_client_fd_.store(-1);
             continue;
         }
 
         auto accept_key = computeAcceptKey(*key_opt);
         if (!sendHandshakeResponse(client_fd, accept_key)) {
             close(client_fd);
+            active_client_fd_.store(-1);
             continue;
         }
 
@@ -403,18 +477,49 @@ void WebSocketServer::run() {
                 break;
             }
 
-            auto command = *payload_opt;
-            if (command == "ping") {
+            auto message = *payload_opt;
+            if (message == "ping") {
                 continue;
             }
-            bool handled = dispatcher_.dispatch(command);
-            if (!handled) {
-                std::cerr << "Unknown command received: " << command << std::endl;
+            auto parsed_message = parseInboundMessage(message);
+            if (!parsed_message) {
+                std::cerr << "Mensagem recebida em formato inválido: " << message << std::endl;
+                continue;
             }
+
+            if (parsed_message->channel == MessageChannel::Command) {
+                bool handled = dispatcher_.dispatch(parsed_message->key);
+                if (handled) {
+                    std::cout << "Comando aceito: " << parsed_message->key << std::endl;
+                } else {
+                    std::cerr << "Comando desconhecido recebido: " << parsed_message->key << std::endl;
+                }
+                continue;
+            }
+
+            if (parsed_message->channel == MessageChannel::Config) {
+                if (!parsed_message->value) {
+                    std::cerr << "Mensagem de configuração sem valor: " << message << std::endl;
+                    continue;
+                }
+                if (!config_handler_) {
+                    std::cerr << "Handler de configuração não definido para mensagem: " << message << std::endl;
+                    continue;
+                }
+                bool updated = config_handler_(parsed_message->key, *parsed_message->value);
+                if (!updated) {
+                    std::cerr << "Falha ao aplicar configuração: " << parsed_message->key
+                              << "=" << *parsed_message->value << std::endl;
+                }
+                continue;
+            }
+
+            std::cerr << "Canal de mensagem desconhecido: " << message << std::endl;
         }
 
         sendCloseFrame(client_fd);
         close(client_fd);
+        active_client_fd_.store(-1);
     }
 
     close(server_fd);
