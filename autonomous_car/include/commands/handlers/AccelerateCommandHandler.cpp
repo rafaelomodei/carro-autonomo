@@ -1,65 +1,108 @@
 #include "AccelerateCommandHandler.h"
+
+#include "config/VehicleConfig.h"
+
+#include <cmath>
 #include <iostream>
 #include <pigpio.h>
 
-// Definições dos pinos GPIO
-constexpr int PIN_FORWARD_A1  = 17; // GPIO para direção Forward
-constexpr int PIN_FORWARD_A2  = 27; // GPIO para direção Forward
-constexpr int PIN_BACKWARD_B1 = 23; // GPIO para direção Backward
-constexpr int PIN_BACKWARD_B2 = 22; // GPIO para direção Backward
+namespace {
+constexpr int PIN_FORWARD_A1  = 17;
+constexpr int PIN_FORWARD_A2  = 27;
+constexpr int PIN_BACKWARD_B1 = 23;
+constexpr int PIN_BACKWARD_B2 = 22;
+}
 
-void AccelerateCommandHandler::handle(const rapidjson::Value &cmd) const {
+bool AccelerateCommandHandler::handle(const rapidjson::Value &cmd) const {
   setupGPIO();
 
-  if (cmd.HasMember("speed") && cmd["speed"].IsInt()) {
-    int speed = cmd["speed"].GetInt();
-    std::cout << "Comando recebido: Acelerar para " << speed << " km/h" << std::endl;
-
-    setMotorDirection(speed);
-    
-  } else {
-    std::cerr << "Comando 'accelerate' inválido: falta 'speed'." << std::endl;
+  std::string action;
+  if (cmd.HasMember("action") && cmd["action"].IsString()) {
+    action = cmd["action"].GetString();
   }
+
+  bool hasExplicitSpeed = false;
+  int  baseSpeed        = 0;
+
+  if (cmd.HasMember("speed") && cmd["speed"].IsNumber()) {
+    baseSpeed        = static_cast<int>(std::round(cmd["speed"].GetDouble()));
+    hasExplicitSpeed = true;
+  } else if (cmd.HasMember("value") && cmd["value"].IsNumber()) {
+    baseSpeed        = static_cast<int>(std::round(cmd["value"].GetDouble()));
+    hasExplicitSpeed = true;
+  }
+
+  if (cmd.HasMember("direction") && cmd["direction"].IsString()) {
+    action = cmd["direction"].GetString();
+  }
+
+  const auto &vehicleConfig = VehicleConfig::getInstance();
+
+  if (!hasExplicitSpeed) {
+    if (action == "forward" || action == "accelerate") {
+      baseSpeed = static_cast<int>(std::round(vehicleConfig.speedLimit));
+    } else if (action == "backward") {
+      baseSpeed = -static_cast<int>(std::round(vehicleConfig.speedLimit));
+    } else if (action == "stop") {
+      baseSpeed = 0;
+    } else if (action == "reverse") {
+      baseSpeed = -static_cast<int>(std::round(vehicleConfig.speedLimit));
+    }
+  }
+
+  if (!hasExplicitSpeed && action.empty()) {
+    std::cerr << "Comando de movimento inválido: nenhum parâmetro reconhecido." << std::endl;
+    return false;
+  }
+
+  const bool goingForward  = baseSpeed > 0;
+  const bool goingBackward = baseSpeed < 0;
+
+  double sensitivity = goingForward ? vehicleConfig.accelerationSensitivity
+                                    : vehicleConfig.brakeSensitivity;
+  int adjustedSpeed  = static_cast<int>(std::round(baseSpeed * sensitivity));
+
+  setMotorDirection(adjustedSpeed);
+
+  if (goingForward) {
+    std::cout << "Movimento para frente com sensibilidade " << sensitivity
+              << " (valor ajustado: " << adjustedSpeed << ")" << std::endl;
+  } else if (goingBackward) {
+    std::cout << "Movimento de ré com sensibilidade " << sensitivity
+              << " (valor ajustado: " << adjustedSpeed << ")" << std::endl;
+  } else {
+    std::cout << "Motores em repouso" << std::endl;
+  }
+
+  return true;
 }
 
 void AccelerateCommandHandler::setupGPIO() const {
   static bool isSetup = false;
   if (!isSetup) {
-    if (gpioInitialise() < 0) {
-      std::cerr << "Falha ao inicializar pigpio." << std::endl;
-      exit(1);
-    }
-    gpioSetMode(PIN_FORWARD_A1, PI_OUTPUT);  // Configura pino Forward como saída
-    gpioSetMode(PIN_FORWARD_A2, PI_OUTPUT); // Configura pino Backward como saída
-    gpioSetMode(PIN_BACKWARD_B1, PI_OUTPUT);  // Configura pino Forward como saída
-    gpioSetMode(PIN_BACKWARD_B2, PI_OUTPUT); // Configura pino Backward como saída
+    gpioSetMode(PIN_FORWARD_A1, PI_OUTPUT);
+    gpioSetMode(PIN_FORWARD_A2, PI_OUTPUT);
+    gpioSetMode(PIN_BACKWARD_B1, PI_OUTPUT);
+    gpioSetMode(PIN_BACKWARD_B2, PI_OUTPUT);
     isSetup = true;
   }
 }
 
 void AccelerateCommandHandler::setMotorDirection(int speed) const {
   if (speed > 0) {
-      std::cerr << "FRENTE." << std::endl;
-
-    gpioWrite(PIN_FORWARD_A1, PI_HIGH); // Ativa direção Forward
-    gpioWrite(PIN_BACKWARD_B1, PI_HIGH); // Desativa direção Backward
-    gpioWrite(PIN_FORWARD_A2, PI_LOW); // Ativa direção Forward
-    gpioWrite(PIN_BACKWARD_B2, PI_LOW); // Ativa direção Forward
+    gpioWrite(PIN_FORWARD_A1, PI_HIGH);
+    gpioWrite(PIN_BACKWARD_B1, PI_HIGH);
+    gpioWrite(PIN_FORWARD_A2, PI_LOW);
+    gpioWrite(PIN_BACKWARD_B2, PI_LOW);
   } else if (speed < 0) {
-      std::cerr << "DANDO RE." << std::endl;
-
-    gpioWrite(PIN_FORWARD_A1, PI_LOW); // Ativa direção Forward
-    gpioWrite(PIN_BACKWARD_B1, PI_LOW); // Desativa direção Backward
-    gpioWrite(PIN_FORWARD_A2, PI_HIGH); // Ativa direção Forward
-    gpioWrite(PIN_BACKWARD_B2, PI_HIGH); // Ativa direção Forward
-    
+    gpioWrite(PIN_FORWARD_A1, PI_LOW);
+    gpioWrite(PIN_BACKWARD_B1, PI_LOW);
+    gpioWrite(PIN_FORWARD_A2, PI_HIGH);
+    gpioWrite(PIN_BACKWARD_B2, PI_HIGH);
   } else {
-      std::cerr << "PARADO." << std::endl;
-
-    gpioWrite(PIN_FORWARD_A1, PI_LOW); // Ativa direção Forward
-    gpioWrite(PIN_BACKWARD_B1, PI_LOW); // Desativa direção Backward
-    gpioWrite(PIN_FORWARD_A2, PI_LOW); // Ativa direção Forward
-    gpioWrite(PIN_BACKWARD_B2, PI_LOW); // Ativa direção Forward
+    gpioWrite(PIN_FORWARD_A1, PI_LOW);
+    gpioWrite(PIN_BACKWARD_B1, PI_LOW);
+    gpioWrite(PIN_FORWARD_A2, PI_LOW);
+    gpioWrite(PIN_BACKWARD_B2, PI_LOW);
   }
 }
-

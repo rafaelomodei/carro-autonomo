@@ -35,6 +35,7 @@ add_executable(autonomous_car
     src/main.cpp
     include/managers/WebSocketManager.cpp
     include/commands/CommandProcessor.cpp
+    src/config/VehicleConfig.cpp
     include/commands/handlers/AccelerateCommandHandler.cpp
     include/commands/handlers/AlertCommandHandler.cpp
     include/commands/handlers/BrakeCommandHandler.cpp

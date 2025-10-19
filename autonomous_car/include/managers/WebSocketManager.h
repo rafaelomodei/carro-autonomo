@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <mutex>
 
 class WebSocketManager {
 public:
@@ -14,6 +15,7 @@ public:
   ~WebSocketManager();
 
   void start();
+  void stop();
   void setOnMessageCallback(const std::function<void(const std::string &)> &callback);
   void sendFrame(const std::string &frameData);
 
@@ -27,6 +29,7 @@ private:
   std::function<void(const std::string &)> onMessageCallback;
 
   std::vector<std::shared_ptr<boost::beast::websocket::stream<boost::asio::ip::tcp::socket>>> activeSessions;
+  std::mutex                                                                      sessionsMutex;
 };
 
 #endif // WEBSOCKET_MANAGER_H

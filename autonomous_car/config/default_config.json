@@ -1,0 +1,21 @@
+{
+  "speedLimit": 50.0,
+  "steeringSensitivity": 0.5,
+  "acceleration": {
+    "sensitivity": 1.0
+  },
+  "brake": {
+    "sensitivity": 1.0
+  },
+  "pidControl": {
+    "p": 0.1,
+    "i": 0.1,
+    "d": 0.1
+  },
+  "servo": {
+    "initialPulse": 1500,
+    "minPulse": 1100,
+    "maxPulse": 1850,
+    "increment": 100
+  }
+}

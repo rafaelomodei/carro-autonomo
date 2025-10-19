@@ -1,6 +1,7 @@
 #include "commands/CommandProcessor.h"
 #include "managers/WebSocketManager.h"
 #include "video/VideoStreamHandler.h"
+#include "config/VehicleConfig.h"
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -22,31 +23,37 @@ int main() {
         return 1;
     }
 
-    /* 3. Cria o processamento de comandos */
+    /* 3. Carrega configuração inicial */
+    auto &vehicleConfig = VehicleConfig::getInstance();
+    if (!vehicleConfig.loadFromFile("config/default_config.json")) {
+        std::cerr << "Usando configurações padrão do veículo." << std::endl;
+    }
+
+    /* 4. Cria o processamento de comandos */
     CommandProcessor commandProcessor;
 
-    /* 4. WebSocket em porta 8080 */
+    /* 5. WebSocket em porta 8080 */
     WebSocketManager wsManager(8080);
     wsManager.setOnMessageCallback(
         [&commandProcessor](const std::string &msg) {
             commandProcessor.processCommand(msg);
         });
 
-    /* 5. Câmera 4 -> callback envia quadro */
+    /* 6. Câmera 4 -> callback envia quadro */
     VideoStreamHandler video(4, [&wsManager](const std::string &frame) {
         wsManager.sendFrame(frame);
     });
 
-    /* 6. Sobe as threads */
+    /* 7. Sobe as threads */
     video.startStreaming();
     std::thread wsThread([&] { wsManager.start(); });   // io_context.run()
 
-    /* 7. Loop de espera – Ctrl-C muda stop=false -> true */
+    /* 8. Loop de espera – Ctrl-C muda stop=false -> true */
     while (!stop) std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    /* 8. Encerramento gracioso */
+    /* 9. Encerramento gracioso */
     video.stopStreaming();          // pára loop da câmera
-    // opcional: wsManager.stop();  // se criar método para dar ioContext.stop()
+    wsManager.stop();
     wsThread.join();
     gpioTerminate();                // fecha pigpio
 

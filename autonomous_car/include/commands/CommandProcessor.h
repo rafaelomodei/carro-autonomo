@@ -12,8 +12,8 @@
 // Interface para Handlers
 class CommandHandler {
 public:
-  virtual ~CommandHandler()                              = default;
-  virtual void handle(const rapidjson::Value &cmd) const = 0;
+  virtual ~CommandHandler()                                   = default;
+  virtual bool handle(const rapidjson::Value &cmd) const = 0;
 };
 
 // Processador de Comandos
@@ -27,7 +27,6 @@ private:
 
   // Funções auxiliares
   std::optional<rapidjson::Document> parseJson(const std::string &jsonString) const;
-  bool                               isCommandMessage(const rapidjson::Document &doc) const;
   void                               processPayload(const rapidjson::Value &payload);
   void                               processSingleCommand(const rapidjson::Value &cmd);
   void                               processConfig(const rapidjson::Value &configPayload);

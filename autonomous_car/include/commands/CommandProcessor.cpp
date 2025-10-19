@@ -7,10 +7,15 @@
 #include <rapidjson/document.h>
 
 CommandProcessor::CommandProcessor() {
-  commandHandlers["accelerate"] = std::make_shared<AccelerateCommandHandler>();
-  commandHandlers["brake"]      = std::make_shared<BrakeCommandHandler>();
-  commandHandlers["turn"]       = std::make_shared<TurnCommandHandler>();
-  commandHandlers["alert"]      = std::make_shared<AlertCommandHandler>();
+  auto driveHandler                = std::make_shared<AccelerateCommandHandler>();
+  commandHandlers["accelerate"]    = driveHandler;
+  commandHandlers["forward"]       = driveHandler;
+  commandHandlers["backward"]      = driveHandler;
+  commandHandlers["reverse"]       = driveHandler;
+  commandHandlers["stop"]          = driveHandler;
+  commandHandlers["brake"]         = std::make_shared<BrakeCommandHandler>();
+  commandHandlers["turn"]          = std::make_shared<TurnCommandHandler>();
+  commandHandlers["alert"]         = std::make_shared<AlertCommandHandler>();
 }
 
 void CommandProcessor::processCommand(const std::string &jsonCommand) {
@@ -20,12 +25,22 @@ void CommandProcessor::processCommand(const std::string &jsonCommand) {
     return;
   }
 
-  if (!isCommandMessage(*document)) {
-    std::cerr << "Mensagem inválida ou tipo não suportado." << std::endl;
+  if (!document->HasMember("type") || !document->HasMember("payload") ||
+      !(*document)["type"].IsString()) {
+    std::cerr << "Mensagem inválida recebida." << std::endl;
     return;
   }
 
-  processPayload(document->GetObject()["payload"]);
+  std::string messageType = (*document)["type"].GetString();
+  const auto &payload     = (*document)["payload"];
+
+  if (messageType == "commands") {
+    processPayload(payload);
+  } else if (messageType == "config") {
+    processConfig(payload);
+  } else {
+    std::cerr << "Tipo de mensagem desconhecido: " << messageType << std::endl;
+  }
 }
 
 void CommandProcessor::processConfig(const rapidjson::Value &configPayload) {
@@ -34,20 +49,16 @@ void CommandProcessor::processConfig(const rapidjson::Value &configPayload) {
     return;
   }
 
-  double speedLimit          = configPayload["speedLimit"].GetDouble();
-  double steeringSensitivity = configPayload["steeringSensitivity"].GetDouble();
+  auto &vehicleConfig = VehicleConfig::getInstance();
+  if (!vehicleConfig.applyUpdate(configPayload)) {
+    std::cerr << "Nenhum valor de configuração aplicado." << std::endl;
+    return;
+  }
 
-  PidControl pid;
-  pid.p = configPayload["pidControl"]["p"].GetDouble();
-  pid.i = configPayload["pidControl"]["i"].GetDouble();
-  pid.d = configPayload["pidControl"]["d"].GetDouble();
-
-  // Atualiza a configuração global do veículo
-  VehicleConfig::getInstance().updateConfig(speedLimit, steeringSensitivity, pid);
-
-  std::cout << "Configuração atualizada: Velocidade " << speedLimit
-            << ", Sensibilidade " << steeringSensitivity
-            << ", PID(" << pid.p << ", " << pid.i << ", " << pid.d << ")" << std::endl;
+  std::cout << "Configuração atualizada: velocidade " << vehicleConfig.speedLimit
+            << " | direção " << vehicleConfig.steeringSensitivity
+            << " | aceleração " << vehicleConfig.accelerationSensitivity
+            << " | freio " << vehicleConfig.brakeSensitivity << std::endl;
 }
 
 std::optional<rapidjson::Document> CommandProcessor::parseJson(const std::string &jsonString) const {
@@ -58,18 +69,15 @@ std::optional<rapidjson::Document> CommandProcessor::parseJson(const std::string
   return doc;
 }
 
-bool CommandProcessor::isCommandMessage(const rapidjson::Document &doc) const {
-  return doc.HasMember("type") && doc["type"].IsString() && std::string(doc["type"].GetString()) == "commands";
-}
-
 void CommandProcessor::processPayload(const rapidjson::Value &payload) {
-  if (!payload.IsArray()) {
+  if (payload.IsArray()) {
+    for (const auto &cmd : payload.GetArray()) {
+      processSingleCommand(cmd);
+    }
+  } else if (payload.IsObject()) {
+    processSingleCommand(payload);
+  } else {
     std::cerr << "Payload inválido." << std::endl;
-    return;
-  }
-
-  for (const auto &cmd : payload.GetArray()) {
-    processSingleCommand(cmd);
   }
 }
 
@@ -82,7 +90,12 @@ void CommandProcessor::processSingleCommand(const rapidjson::Value &cmd) {
   std::string action = cmd["action"].GetString();
   auto        it     = commandHandlers.find(action);
   if (it != commandHandlers.end()) {
-    it->second->handle(cmd);
+    bool accepted = it->second->handle(cmd);
+    if (accepted) {
+      std::cout << "Comando aceito: " << action << std::endl;
+    } else {
+      std::cerr << "Comando rejeitado: " << action << std::endl;
+    }
   } else {
     std::cerr << "Comando desconhecido: " << action << std::endl;
   }

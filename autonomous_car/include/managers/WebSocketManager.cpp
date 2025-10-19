@@ -3,6 +3,7 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/core/buffers_to_string.hpp>
 #include <boost/beast/websocket.hpp>
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <rapidjson/document.h>
@@ -12,14 +13,31 @@ WebSocketManager::WebSocketManager(int port)
     : port(port),
       acceptor(ioContext, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)) {}
 
-WebSocketManager::~WebSocketManager() {
-  ioContext.stop();
-}
+WebSocketManager::~WebSocketManager() { stop(); }
 
 void WebSocketManager::start() {
   std::cout << "Iniciando o servidor WebSocket na porta " << port << "..." << std::endl;
   acceptConnections();
   ioContext.run();
+}
+
+void WebSocketManager::stop() {
+  boost::system::error_code ec;
+  acceptor.cancel(ec);
+  acceptor.close(ec);
+
+  {
+    std::lock_guard<std::mutex> lock(sessionsMutex);
+    for (auto &session : activeSessions) {
+      if (session && session->is_open()) {
+        boost::system::error_code closeEc;
+        session->close(boost::beast::websocket::close_code::normal, closeEc);
+      }
+    }
+    activeSessions.clear();
+  }
+
+  ioContext.stop();
 }
 
 void WebSocketManager::setOnMessageCallback(const std::function<void(const std::string &)> &callback) {
@@ -43,6 +61,7 @@ void WebSocketManager::acceptConnections() {
 }
 
 void WebSocketManager::sendFrame(const std::string &frameData) {
+  std::lock_guard<std::mutex> lock(sessionsMutex);
   for (auto it = activeSessions.begin(); it != activeSessions.end();) {
     auto &session = *it;
     if (session->is_open()) {
@@ -63,7 +82,10 @@ void WebSocketManager::sendFrame(const std::string &frameData) {
 void WebSocketManager::handleSession(std::shared_ptr<boost::beast::websocket::stream<boost::asio::ip::tcp::socket>> ws) {
   try {
     ws->accept();
-    activeSessions.push_back(ws); // Adiciona sessão após a aceitação
+    {
+      std::lock_guard<std::mutex> lock(sessionsMutex);
+      activeSessions.push_back(ws); // Adiciona sessão após a aceitação
+    }
 
     std::thread([ws, this]() {
       try {
@@ -86,9 +108,13 @@ void WebSocketManager::handleSession(std::shared_ptr<boost::beast::websocket::st
       }
 
       // Remove sessão ao sair
-      auto it = std::find(activeSessions.begin(), activeSessions.end(), ws);
-      if (it != activeSessions.end()) {
-        activeSessions.erase(it);
+      {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        auto                         it =
+            std::find(activeSessions.begin(), activeSessions.end(), ws);
+        if (it != activeSessions.end()) {
+          activeSessions.erase(it);
+        }
       }
     }).detach();
   } catch (const std::exception &e) {

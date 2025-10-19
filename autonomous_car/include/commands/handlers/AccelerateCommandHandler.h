@@ -5,7 +5,7 @@
 
 class AccelerateCommandHandler : public CommandHandler {
 public:
-  void handle(const rapidjson::Value &cmd) const override;
+  bool handle(const rapidjson::Value &cmd) const override;
 
 private:
   void setupGPIO() const;
