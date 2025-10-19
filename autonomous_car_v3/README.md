@@ -13,14 +13,10 @@ Esta é a terceira versão do projeto do carro autônomo, focada no controle dos
 
 ```
 autonomous_car_v3/
-├── include/
-│   ├── commands/
-│   ├── controllers/
-│   └── services/
 ├── src/
-│   ├── commands/
-│   ├── controllers/
-│   ├── services/
+│   ├── commands/          # comandos do padrão Command (headers e fontes)
+│   ├── controllers/       # controladores de motor e direção
+│   ├── services/          # servidor WebSocket
 │   └── main.cpp
 ├── build.sh
 ├── start.sh
