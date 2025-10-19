@@ -38,19 +38,30 @@ int main() {
         return 1;
     }
 
-    controllers::MotorController motor_controller(kMotorPinForwardA, kMotorPinBackwardA,
-                                                  kMotorPinForwardB, kMotorPinBackwardB);
-    controllers::SteeringController steering_controller(kSteeringPwmPin);
+    using autonomous_car::commands::BackwardCommand;
+    using autonomous_car::commands::CenterSteeringCommand;
+    using autonomous_car::commands::ForwardCommand;
+    using autonomous_car::commands::StopCommand;
+    using autonomous_car::commands::TurnLeftCommand;
+    using autonomous_car::commands::TurnRightCommand;
+    using autonomous_car::controllers::CommandDispatcher;
+    using autonomous_car::controllers::MotorController;
+    using autonomous_car::controllers::SteeringController;
+    using autonomous_car::services::WebSocketServer;
 
-    controllers::CommandDispatcher dispatcher;
-    dispatcher.registerCommand("forward", std::make_unique<commands::ForwardCommand>(motor_controller));
-    dispatcher.registerCommand("backward", std::make_unique<commands::BackwardCommand>(motor_controller));
-    dispatcher.registerCommand("stop", std::make_unique<commands::StopCommand>(motor_controller));
-    dispatcher.registerCommand("left", std::make_unique<commands::TurnLeftCommand>(steering_controller));
-    dispatcher.registerCommand("right", std::make_unique<commands::TurnRightCommand>(steering_controller));
-    dispatcher.registerCommand("center", std::make_unique<commands::CenterSteeringCommand>(steering_controller));
+    MotorController motor_controller(kMotorPinForwardA, kMotorPinBackwardA,
+                                     kMotorPinForwardB, kMotorPinBackwardB);
+    SteeringController steering_controller(kSteeringPwmPin);
 
-    services::WebSocketServer server("0.0.0.0", 8080, dispatcher);
+    CommandDispatcher dispatcher;
+    dispatcher.registerCommand("forward", std::make_unique<ForwardCommand>(motor_controller));
+    dispatcher.registerCommand("backward", std::make_unique<BackwardCommand>(motor_controller));
+    dispatcher.registerCommand("stop", std::make_unique<StopCommand>(motor_controller));
+    dispatcher.registerCommand("left", std::make_unique<TurnLeftCommand>(steering_controller));
+    dispatcher.registerCommand("right", std::make_unique<TurnRightCommand>(steering_controller));
+    dispatcher.registerCommand("center", std::make_unique<CenterSteeringCommand>(steering_controller));
+
+    WebSocketServer server("0.0.0.0", 8080, dispatcher);
     server.start();
 
     std::cout << "Autonomous Car v3 WebSocket server iniciado em ws://0.0.0.0:8080" << std::endl;
