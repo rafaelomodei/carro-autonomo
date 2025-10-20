@@ -10,4 +10,4 @@ if [[ ! -x "${EXECUTABLE}" ]]; then
   exit 1
 fi
 
-"${EXECUTABLE}"
+exec "${EXECUTABLE}"

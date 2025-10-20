@@ -12,14 +12,20 @@ public:
     void forward();
     void backward();
     void stop();
+    void setAccelerationSensitivity(double sensitivity);
+    void setBrakeSensitivity(double sensitivity);
 
 private:
-    void setMotorState(int forward_pin, int backward_pin, bool forward_active, bool backward_active);
+    void setMotorPwm(int forward_pin, int backward_pin, double forward_intensity, double backward_intensity);
+    static double clampIntensity(double intensity);
+    static int toDutyCycle(double intensity);
 
     int forward_pin_left_;
     int backward_pin_left_;
     int forward_pin_right_;
     int backward_pin_right_;
+    double acceleration_sensitivity_;
+    double brake_sensitivity_;
 };
 
 } // namespace autonomous_car::controllers
