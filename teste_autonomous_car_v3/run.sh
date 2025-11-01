@@ -29,7 +29,7 @@ show_header() {
  Controle remoto - Teste Autonomous Car V3
 ============================================
 Host: $HOST  |  Porta: $PORT
-Pressione W, A, S ou B para enviar comandos.
+Pressione W, A, S ou D para enviar comandos.
 Pressione Q para sair.
 MSG
 }
@@ -53,13 +53,13 @@ while true; do
         send_command "forward"
         ;;
       a)
-        send_command "turn_left"
+        send_command "left"
         ;;
       s)
-        send_command "reverse"
+        send_command "backward"
         ;;
-      b)
-        send_command "turn_right"
+      d)
+        send_command "right"
         ;;
       q)
         exit 0
