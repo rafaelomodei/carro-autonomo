@@ -78,16 +78,47 @@ stty -echo
 
 open_ws
 
+current_command=""
+
 while true; do
   if read -rsn1 -t "$INTERVAL" key; then
     key_lower=${key,,}
     case "$key_lower" in
-      w) send_command "forward" ;;
-      a) send_command "left" ;;
-      s) send_command "backward" ;;
-      d) send_command "right" ;;
-      q) exit 0 ;;
-      *) ;; # ignora outras teclas
+      w)
+        current_command="forward"
+        send_command "$current_command"
+        continue
+        ;;
+      a)
+        current_command="left"
+        send_command "$current_command"
+        continue
+        ;;
+      s)
+        current_command="backward"
+        send_command "$current_command"
+        continue
+        ;;
+      d)
+        current_command="right"
+        send_command "$current_command"
+        continue
+        ;;
+      " ")
+        current_command=""
+        send_command "stop"
+        continue
+        ;;
+      q)
+        exit 0
+        ;;
+      *)
+        continue
+        ;;
     esac
+  fi
+
+  if [[ -n "$current_command" ]]; then
+    send_command "$current_command"
   fi
 done
