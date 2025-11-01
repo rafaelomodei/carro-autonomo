@@ -12,12 +12,12 @@ add_executable(${PROJECT_NAME}
     src/controllers/MotorController.cpp
     src/controllers/SteeringController.cpp
     src/controllers/CommandDispatcher.cpp
-    src/commands/ForwardCommand.cpp
-    src/commands/BackwardCommand.cpp
-    src/commands/StopCommand.cpp
-    src/commands/TurnLeftCommand.cpp
-    src/commands/TurnRightCommand.cpp
-    src/commands/CenterSteeringCommand.cpp
+    src/commands/forward/ForwardCommand.cpp
+    src/commands/backward/BackwardCommand.cpp
+    src/commands/stop/StopCommand.cpp
+    src/commands/turn_left/TurnLeftCommand.cpp
+    src/commands/turn_right/TurnRightCommand.cpp
+    src/commands/center_steering/CenterSteeringCommand.cpp
     src/services/WebSocketServer.cpp
     src/config/ConfigurationManager.cpp
 )

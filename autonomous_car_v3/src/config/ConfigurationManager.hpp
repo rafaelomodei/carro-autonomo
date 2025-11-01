@@ -16,8 +16,6 @@ struct RuntimeConfigSnapshot {
     MotorPinConfig motor_pins;
     int steering_pwm_pin{13};
     double steering_sensitivity{1.0};
-    double acceleration_sensitivity{1.0};
-    double brake_sensitivity{1.0};
 };
 
 class ConfigurationManager {

@@ -1,4 +1,4 @@
-#include "commands/ForwardCommand.hpp"
+#include "commands/forward/ForwardCommand.hpp"
 
 namespace autonomous_car::commands {
 

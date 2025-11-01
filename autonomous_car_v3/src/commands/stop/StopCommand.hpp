@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Command.hpp"
+#include "commands/Command.hpp"
 #include "controllers/MotorController.hpp"
 
 namespace autonomous_car::commands {
 
-class ForwardCommand : public Command {
+class StopCommand : public Command {
 public:
-    explicit ForwardCommand(controllers::MotorController &motor_controller);
+    explicit StopCommand(controllers::MotorController &motor_controller);
     void execute() override;
 
 private:
