@@ -6,15 +6,15 @@
 namespace autonomous_car::config {
 
 struct MotorPinConfig {
-    int forward_left{17};
-    int backward_left{27};
-    int forward_right{23};
-    int backward_right{22};
+    int forward_left{26};
+    int backward_left{20};
+    int forward_right{19};
+    int backward_right{16};
 };
 
 struct RuntimeConfigSnapshot {
     MotorPinConfig motor_pins;
-    int steering_pwm_pin{18};
+    int steering_pwm_pin{13};
     double steering_sensitivity{1.0};
     double acceleration_sensitivity{1.0};
     double brake_sensitivity{1.0};
