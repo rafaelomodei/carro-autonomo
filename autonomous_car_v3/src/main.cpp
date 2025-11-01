@@ -6,15 +6,14 @@
 #include <memory>
 #include <thread>
 
-#include <softPwm.h>
 #include <wiringPi.h>
 
-#include "commands/BackwardCommand.hpp"
-#include "commands/CenterSteeringCommand.hpp"
-#include "commands/ForwardCommand.hpp"
-#include "commands/StopCommand.hpp"
-#include "commands/TurnLeftCommand.hpp"
-#include "commands/TurnRightCommand.hpp"
+#include "commands/backward/BackwardCommand.hpp"
+#include "commands/center_steering/CenterSteeringCommand.hpp"
+#include "commands/forward/ForwardCommand.hpp"
+#include "commands/stop/StopCommand.hpp"
+#include "commands/turn_left/TurnLeftCommand.hpp"
+#include "commands/turn_right/TurnRightCommand.hpp"
 #include "config/ConfigurationManager.hpp"
 #include "controllers/CommandDispatcher.hpp"
 #include "controllers/MotorController.hpp"
@@ -84,9 +83,6 @@ int main() {
                                      runtime_config.motor_pins.backward_left,
                                      runtime_config.motor_pins.forward_right,
                                      runtime_config.motor_pins.backward_right);
-    motor_controller.setAccelerationSensitivity(runtime_config.acceleration_sensitivity);
-    motor_controller.setBrakeSensitivity(runtime_config.brake_sensitivity);
-
     SteeringController steering_controller(runtime_config.steering_pwm_pin);
     steering_controller.setSteeringSensitivity(runtime_config.steering_sensitivity);
 
@@ -104,8 +100,6 @@ int main() {
             return false;
         }
         auto updated_snapshot = config_manager.snapshot();
-        motor_controller.setAccelerationSensitivity(updated_snapshot.acceleration_sensitivity);
-        motor_controller.setBrakeSensitivity(updated_snapshot.brake_sensitivity);
         steering_controller.setSteeringSensitivity(updated_snapshot.steering_sensitivity);
         return true;
     };

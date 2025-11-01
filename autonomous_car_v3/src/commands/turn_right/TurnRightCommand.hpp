@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Command.hpp"
+#include "commands/Command.hpp"
 #include "controllers/SteeringController.hpp"
 
 namespace autonomous_car::commands {
 
-class CenterSteeringCommand : public Command {
+class TurnRightCommand : public Command {
 public:
-    explicit CenterSteeringCommand(controllers::SteeringController &steering_controller);
+    explicit TurnRightCommand(controllers::SteeringController &steering_controller);
     void execute() override;
 
 private:

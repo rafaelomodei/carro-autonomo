@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Command.hpp"
+#include "commands/Command.hpp"
 #include "controllers/SteeringController.hpp"
 
 namespace autonomous_car::commands {

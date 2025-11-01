@@ -1,4 +1,4 @@
-#include "commands/StopCommand.hpp"
+#include "commands/stop/StopCommand.hpp"
 
 namespace autonomous_car::commands {
 

@@ -176,24 +176,6 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
         return true;
     }
 
-    if (iequals(key, "ACCELERATION_SENSITIVITY") || iequals(key, "drive.acceleration_sensitivity")) {
-        auto parsed = parseDouble(value);
-        if (!parsed || *parsed <= 0.0) {
-            return false;
-        }
-        current_.acceleration_sensitivity = *parsed;
-        return true;
-    }
-
-    if (iequals(key, "BRAKE_SENSITIVITY") || iequals(key, "drive.brake_sensitivity")) {
-        auto parsed = parseDouble(value);
-        if (!parsed || *parsed <= 0.0) {
-            return false;
-        }
-        current_.brake_sensitivity = *parsed;
-        return true;
-    }
-
     return false;
 }
 
