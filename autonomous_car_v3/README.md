@@ -27,11 +27,11 @@ autonomous_car_v3/
 
 | Pino GPIO | Função                           |
 |-----------|----------------------------------|
-| `17`      | Motor esquerdo – sentido frente  |
-| `27`      | Motor esquerdo – sentido ré      |
-| `23`      | Motor direito – sentido frente   |
-| `22`      | Motor direito – sentido ré       |
-| `18`      | Servo da direção (PWM)           |
+| `26`      | Motor esquerdo – sentido frente  |
+| `20`      | Motor esquerdo – sentido ré      |
+| `19`      | Motor direito – sentido frente   |
+| `16`      | Motor direito – sentido ré       |
+| `13`      | Servo da direção (PWM)           |
 
 > ⚠️ Os pinos utilizam a numeração BCM por meio de `wiringPiSetupGpio()`. Ajuste-os conforme o seu hardware.
 
