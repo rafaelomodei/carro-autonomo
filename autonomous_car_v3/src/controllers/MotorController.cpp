@@ -19,13 +19,16 @@ MotorController::MotorController(int forward_pin_left, int backward_pin_left,
 }
 
 void MotorController::forward() {
+    // A roda direita é montada de forma invertida em relação à roda esquerda,
+    // portanto o sentido "frente" exige ativar o pino de ré do lado direito.
     setMotorState(forward_pin_left_, backward_pin_left_, true, false);
-    setMotorState(forward_pin_right_, backward_pin_right_, true, false);
+    setMotorState(forward_pin_right_, backward_pin_right_, false, true);
 }
 
 void MotorController::backward() {
+    // Para mover para trás aplicamos a inversão oposta descrita acima.
     setMotorState(forward_pin_left_, backward_pin_left_, false, true);
-    setMotorState(forward_pin_right_, backward_pin_right_, false, true);
+    setMotorState(forward_pin_right_, backward_pin_right_, true, false);
 }
 
 void MotorController::stop() {
