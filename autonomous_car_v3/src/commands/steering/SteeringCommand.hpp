@@ -5,10 +5,10 @@
 
 namespace autonomous_car::commands {
 
-class TurnRightCommand : public Command {
+class SteeringCommand : public Command {
 public:
-    explicit TurnRightCommand(controllers::SteeringController &steering_controller);
-    void execute(double intensity) override;
+    explicit SteeringCommand(controllers::SteeringController &steering_controller);
+    void execute(double value) override;
 
 private:
     controllers::SteeringController &steering_controller_;

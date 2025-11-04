@@ -8,7 +8,7 @@ namespace autonomous_car::commands {
 class BackwardCommand : public Command {
 public:
     explicit BackwardCommand(controllers::MotorController &motor_controller);
-    void execute() override;
+    void execute(double intensity) override;
 
 private:
     controllers::MotorController &motor_controller_;

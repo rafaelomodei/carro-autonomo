@@ -5,9 +5,9 @@
 
 namespace autonomous_car::commands {
 
-class StopCommand : public Command {
+class ThrottleCommand : public Command {
 public:
-    explicit StopCommand(controllers::MotorController &motor_controller);
+    explicit ThrottleCommand(controllers::MotorController &motor_controller);
     void execute(double value) override;
 
 private:

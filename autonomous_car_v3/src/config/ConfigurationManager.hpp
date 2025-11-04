@@ -12,10 +12,22 @@ struct MotorPinConfig {
     int backward_right{16};
 };
 
+struct PidConfig {
+    double kp{0.0};
+    double ki{0.0};
+    double kd{0.0};
+    double output_limit{0.0};
+    int control_interval_ms{20};
+};
+
 struct RuntimeConfigSnapshot {
     MotorPinConfig motor_pins;
     int steering_pwm_pin{13};
     double steering_sensitivity{1.0};
+    bool motor_left_inverted{false};
+    bool motor_right_inverted{true};
+    PidConfig motor_pid;
+    PidConfig steering_pid;
 };
 
 class ConfigurationManager {

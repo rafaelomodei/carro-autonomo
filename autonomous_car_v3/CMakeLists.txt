@@ -9,6 +9,7 @@ find_package(Threads REQUIRED)
 
 add_executable(${PROJECT_NAME}
     src/main.cpp
+    src/controllers/PidController.cpp
     src/controllers/MotorController.cpp
     src/controllers/SteeringController.cpp
     src/controllers/CommandDispatcher.cpp
@@ -18,6 +19,8 @@ add_executable(${PROJECT_NAME}
     src/commands/turn_left/TurnLeftCommand.cpp
     src/commands/turn_right/TurnRightCommand.cpp
     src/commands/center_steering/CenterSteeringCommand.cpp
+    src/commands/throttle/ThrottleCommand.cpp
+    src/commands/steering/SteeringCommand.cpp
     src/services/WebSocketServer.cpp
     src/config/ConfigurationManager.cpp
 )

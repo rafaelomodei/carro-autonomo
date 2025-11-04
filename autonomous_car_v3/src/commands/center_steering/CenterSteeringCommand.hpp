@@ -8,7 +8,7 @@ namespace autonomous_car::commands {
 class CenterSteeringCommand : public Command {
 public:
     explicit CenterSteeringCommand(controllers::SteeringController &steering_controller);
-    void execute() override;
+    void execute(double value) override;
 
 private:
     controllers::SteeringController &steering_controller_;

@@ -11,6 +11,8 @@
 #include "commands/backward/BackwardCommand.hpp"
 #include "commands/center_steering/CenterSteeringCommand.hpp"
 #include "commands/forward/ForwardCommand.hpp"
+#include "commands/steering/SteeringCommand.hpp"
+#include "commands/throttle/ThrottleCommand.hpp"
 #include "commands/stop/StopCommand.hpp"
 #include "commands/turn_left/TurnLeftCommand.hpp"
 #include "commands/turn_right/TurnRightCommand.hpp"
@@ -59,7 +61,9 @@ int main() {
     using autonomous_car::commands::BackwardCommand;
     using autonomous_car::commands::CenterSteeringCommand;
     using autonomous_car::commands::ForwardCommand;
+    using autonomous_car::commands::SteeringCommand;
     using autonomous_car::commands::StopCommand;
+    using autonomous_car::commands::ThrottleCommand;
     using autonomous_car::commands::TurnLeftCommand;
     using autonomous_car::commands::TurnRightCommand;
     using autonomous_car::controllers::CommandDispatcher;
@@ -84,15 +88,34 @@ int main() {
                                      runtime_config.motor_pins.forward_right,
                                      runtime_config.motor_pins.backward_right);
     SteeringController steering_controller(runtime_config.steering_pwm_pin);
+    MotorController::DynamicsConfig motor_dynamics;
+    motor_dynamics.invert_left = runtime_config.motor_left_inverted;
+    motor_dynamics.invert_right = runtime_config.motor_right_inverted;
+    motor_dynamics.kp = runtime_config.motor_pid.kp;
+    motor_dynamics.ki = runtime_config.motor_pid.ki;
+    motor_dynamics.kd = runtime_config.motor_pid.kd;
+    motor_dynamics.output_limit = runtime_config.motor_pid.output_limit;
+    motor_dynamics.control_interval_ms = runtime_config.motor_pid.control_interval_ms;
+    motor_controller.setDynamics(motor_dynamics);
+
+    SteeringController::DynamicsConfig steering_dynamics;
+    steering_dynamics.kp = runtime_config.steering_pid.kp;
+    steering_dynamics.ki = runtime_config.steering_pid.ki;
+    steering_dynamics.kd = runtime_config.steering_pid.kd;
+    steering_dynamics.output_limit = runtime_config.steering_pid.output_limit;
+    steering_dynamics.control_interval_ms = runtime_config.steering_pid.control_interval_ms;
+    steering_controller.setDynamics(steering_dynamics);
     steering_controller.setSteeringSensitivity(runtime_config.steering_sensitivity);
 
     CommandDispatcher dispatcher;
     dispatcher.registerCommand("forward", std::make_unique<ForwardCommand>(motor_controller));
     dispatcher.registerCommand("backward", std::make_unique<BackwardCommand>(motor_controller));
     dispatcher.registerCommand("stop", std::make_unique<StopCommand>(motor_controller));
+    dispatcher.registerCommand("throttle", std::make_unique<ThrottleCommand>(motor_controller));
     dispatcher.registerCommand("left", std::make_unique<TurnLeftCommand>(steering_controller));
     dispatcher.registerCommand("right", std::make_unique<TurnRightCommand>(steering_controller));
     dispatcher.registerCommand("center", std::make_unique<CenterSteeringCommand>(steering_controller));
+    dispatcher.registerCommand("steering", std::make_unique<SteeringCommand>(steering_controller));
 
     auto config_update_handler = [&](const std::string &key, const std::string &value) {
         bool updated = config_manager.updateSetting(key, value);
@@ -100,6 +123,23 @@ int main() {
             return false;
         }
         auto updated_snapshot = config_manager.snapshot();
+        MotorController::DynamicsConfig updated_motor_dynamics;
+        updated_motor_dynamics.invert_left = updated_snapshot.motor_left_inverted;
+        updated_motor_dynamics.invert_right = updated_snapshot.motor_right_inverted;
+        updated_motor_dynamics.kp = updated_snapshot.motor_pid.kp;
+        updated_motor_dynamics.ki = updated_snapshot.motor_pid.ki;
+        updated_motor_dynamics.kd = updated_snapshot.motor_pid.kd;
+        updated_motor_dynamics.output_limit = updated_snapshot.motor_pid.output_limit;
+        updated_motor_dynamics.control_interval_ms = updated_snapshot.motor_pid.control_interval_ms;
+        motor_controller.setDynamics(updated_motor_dynamics);
+
+        SteeringController::DynamicsConfig updated_steering_dynamics;
+        updated_steering_dynamics.kp = updated_snapshot.steering_pid.kp;
+        updated_steering_dynamics.ki = updated_snapshot.steering_pid.ki;
+        updated_steering_dynamics.kd = updated_snapshot.steering_pid.kd;
+        updated_steering_dynamics.output_limit = updated_snapshot.steering_pid.output_limit;
+        updated_steering_dynamics.control_interval_ms = updated_snapshot.steering_pid.control_interval_ms;
+        steering_controller.setDynamics(updated_steering_dynamics);
         steering_controller.setSteeringSensitivity(updated_snapshot.steering_sensitivity);
         return true;
     };
