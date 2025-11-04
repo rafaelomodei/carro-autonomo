@@ -88,6 +88,9 @@ int main() {
                                      runtime_config.motor_pins.forward_right,
                                      runtime_config.motor_pins.backward_right);
     SteeringController steering_controller(runtime_config.steering_pwm_pin);
+    steering_controller.configureAngleLimits(runtime_config.steering_center_angle,
+                                             runtime_config.steering_left_limit,
+                                             runtime_config.steering_right_limit);
     MotorController::DynamicsConfig motor_dynamics;
     motor_dynamics.invert_left = runtime_config.motor_left_inverted;
     motor_dynamics.invert_right = runtime_config.motor_right_inverted;
@@ -141,6 +144,9 @@ int main() {
         updated_steering_dynamics.control_interval_ms = updated_snapshot.steering_pid.control_interval_ms;
         steering_controller.setDynamics(updated_steering_dynamics);
         steering_controller.setSteeringSensitivity(updated_snapshot.steering_sensitivity);
+        steering_controller.configureAngleLimits(updated_snapshot.steering_center_angle,
+                                                 updated_snapshot.steering_left_limit,
+                                                 updated_snapshot.steering_right_limit);
         return true;
     };
 

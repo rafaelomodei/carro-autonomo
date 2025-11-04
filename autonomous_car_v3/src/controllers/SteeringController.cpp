@@ -11,17 +11,14 @@ namespace autonomous_car::controllers {
 namespace {
 constexpr int kDefaultMinPwm = 5;   // ~0.5ms pulse width
 constexpr int kDefaultMaxPwm = 25;  // ~2.5ms pulse width
-constexpr int kCenterAngle = 90;
-constexpr int kBaseSteeringDelta = 45;
 constexpr double kMinNormalizedSteering = -1.0;
 constexpr double kMaxNormalizedSteering = 1.0;
 }
 
-SteeringController::SteeringController(int pwm_pin, int min_angle, int max_angle)
+SteeringController::SteeringController(int pwm_pin, int servo_min_angle, int servo_max_angle)
     : pwm_pin_{pwm_pin},
-      min_angle_{min_angle},
-      max_angle_{max_angle},
-      center_angle_{kCenterAngle},
+      servo_min_angle_{servo_min_angle},
+      servo_max_angle_{servo_max_angle},
       min_pwm_{kDefaultMinPwm},
       max_pwm_{kDefaultMaxPwm},
       steering_sensitivity_{1.0},
@@ -29,6 +26,7 @@ SteeringController::SteeringController(int pwm_pin, int min_angle, int max_angle
       control_interval_ms_{20},
       target_offset_{0.0},
       current_offset_{0.0} {
+    angle_limits_ = computeAngleState(AngleLimitConfig{});
     initializePwm();
     pid_.setOutputLimits(-0.2, 0.2);
     pid_.reset();
@@ -42,7 +40,8 @@ SteeringController::~SteeringController() {
         control_thread_.join();
     }
 
-    applyAngle(center_angle_);
+    auto limits = loadAngleLimits();
+    applyAngle(limits.center_angle, limits);
     softPwmStop(pwm_pin_);
 }
 
@@ -69,15 +68,9 @@ void SteeringController::setSteering(double normalized_value) {
 }
 
 void SteeringController::setAngle(int angle) {
-    int clamped_angle = clampAngle(angle);
-    int delta = steeringDelta();
-    if (delta <= 0) {
-        setSteering(0.0);
-        return;
-    }
-    double normalized = static_cast<double>(clamped_angle - center_angle_) /
-                        static_cast<double>(delta);
-    normalized = std::clamp(normalized, kMinNormalizedSteering, kMaxNormalizedSteering);
+    auto limits = loadAngleLimits();
+    int clamped_angle = std::clamp(angle, limits.min_angle, limits.max_angle);
+    double normalized = angleToNormalized(clamped_angle, limits);
     setSteering(normalized);
 }
 
@@ -96,11 +89,27 @@ void SteeringController::setDynamics(const DynamicsConfig &config) {
     pid_.reset();
 }
 
+void SteeringController::configureAngleLimits(const AngleLimitConfig &config) {
+    configureAngleLimits(config.center_angle, config.left_range, config.right_range);
+}
+
+void SteeringController::configureAngleLimits(int center_angle, int left_range, int right_range) {
+    AngleLimitState updated = computeAngleState(center_angle, left_range, right_range);
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        angle_limits_ = updated;
+        target_offset_ = 0.0;
+        current_offset_ = 0.0;
+    }
+    applyAngle(updated.center_angle, updated);
+}
+
 void SteeringController::initializePwm() {
     if (softPwmCreate(pwm_pin_, 0, 200) != 0) {
         std::cerr << "Falha ao iniciar PWM por software no pino " << pwm_pin_ << std::endl;
     }
-    applyAngle(center_angle_);
+    auto limits = loadAngleLimits();
+    applyAngle(limits.center_angle, limits);
 }
 
 void SteeringController::controlLoop() {
@@ -116,20 +125,20 @@ void SteeringController::controlLoop() {
         double target = 0.0;
         double current = 0.0;
         double sensitivity = steering_sensitivity_.load();
+        AngleLimitState limits;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
             target = target_offset_;
             current = current_offset_;
+            limits = angle_limits_;
         }
 
         double delta = pid_.compute(target, current, dt);
         double updated = std::clamp(current + delta, kMinNormalizedSteering, kMaxNormalizedSteering);
+        double scaled = std::clamp(updated * sensitivity, kMinNormalizedSteering, kMaxNormalizedSteering);
 
-        int delta_angle = static_cast<int>(std::round(kBaseSteeringDelta * sensitivity));
-        delta_angle = std::max(delta_angle, 1);
-        int angle = center_angle_ + static_cast<int>(std::round(updated * delta_angle));
-        angle = clampAngle(angle);
-        applyAngle(angle);
+        int angle = normalizedToAngle(scaled, limits);
+        applyAngle(angle, limits);
 
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
@@ -137,33 +146,70 @@ void SteeringController::controlLoop() {
         }
     }
 
-    applyAngle(center_angle_);
+    auto limits = loadAngleLimits();
+    applyAngle(limits.center_angle, limits);
 }
 
-void SteeringController::applyAngle(int angle) {
-    int clamped = clampAngle(angle);
+SteeringController::AngleLimitState SteeringController::computeAngleState(const AngleLimitConfig &config) const {
+    return computeAngleState(config.center_angle, config.left_range, config.right_range);
+}
+
+SteeringController::AngleLimitState SteeringController::computeAngleState(int center_angle, int left_range,
+                                                                         int right_range) const {
+    AngleLimitState state;
+    int clamped_center = std::clamp(center_angle, servo_min_angle_, servo_max_angle_);
+    int max_left = clamped_center - servo_min_angle_;
+    int max_right = servo_max_angle_ - clamped_center;
+
+    state.center_angle = clamped_center;
+    state.left_range = std::clamp(left_range, 0, max_left);
+    state.right_range = std::clamp(right_range, 0, max_right);
+    state.min_angle = state.center_angle - state.left_range;
+    state.max_angle = state.center_angle + state.right_range;
+    return state;
+}
+
+SteeringController::AngleLimitState SteeringController::loadAngleLimits() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return angle_limits_;
+}
+
+int SteeringController::normalizedToAngle(double normalized, const AngleLimitState &limits) const {
+    double clamped = std::clamp(normalized, kMinNormalizedSteering, kMaxNormalizedSteering);
+    if (clamped >= 0.0) {
+        int range = std::max(limits.right_range, 0);
+        return limits.center_angle + static_cast<int>(std::round(clamped * range));
+    }
+    int range = std::max(limits.left_range, 0);
+    return limits.center_angle + static_cast<int>(std::round(clamped * range));
+}
+
+double SteeringController::angleToNormalized(int angle, const AngleLimitState &limits) const {
+    int clamped_angle = std::clamp(angle, limits.min_angle, limits.max_angle);
+    if (clamped_angle >= limits.center_angle) {
+        int denominator = std::max(limits.right_range, 1);
+        double delta = static_cast<double>(clamped_angle - limits.center_angle) / denominator;
+        return std::clamp(delta, 0.0, kMaxNormalizedSteering);
+    }
+    int denominator = std::max(limits.left_range, 1);
+    double delta = static_cast<double>(clamped_angle - limits.center_angle) / denominator;
+    return std::clamp(delta, kMinNormalizedSteering, 0.0);
+}
+
+void SteeringController::applyAngle(int angle, const AngleLimitState &limits) {
+    int clamped = std::clamp(angle, limits.min_angle, limits.max_angle);
     int pwm_value = toPwmValue(clamped);
     softPwmWrite(pwm_pin_, pwm_value);
 }
 
-int SteeringController::clampAngle(int angle) const {
-    return std::clamp(angle, min_angle_, max_angle_);
-}
-
 int SteeringController::toPwmValue(int angle) const {
-    if (max_angle_ == min_angle_) {
+    if (servo_max_angle_ == servo_min_angle_) {
         return min_pwm_;
     }
-    double proportion = static_cast<double>(angle - min_angle_) /
-                         static_cast<double>(max_angle_ - min_angle_);
+    double proportion = static_cast<double>(angle - servo_min_angle_) /
+                         static_cast<double>(servo_max_angle_ - servo_min_angle_);
     int range = max_pwm_ - min_pwm_;
     return min_pwm_ + static_cast<int>(proportion * range);
-}
-
-int SteeringController::steeringDelta() const {
-    double sensitivity = steering_sensitivity_.load();
-    int delta = static_cast<int>(std::round(kBaseSteeringDelta * sensitivity));
-    return std::max(delta, 1);
 }
 
 } // namespace autonomous_car::controllers

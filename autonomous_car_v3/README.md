@@ -82,9 +82,13 @@ Os arquivos `.env` (e o canal `config`) aceitam os parâmetros abaixo para calib
 | `STEERING_PID_KP`, `STEERING_PID_KI`, `STEERING_PID_KD` | Ganhos do PID de direção |
 | `STEERING_PID_OUTPUT_LIMIT` | Velocidade máxima de variação do ângulo |
 | `STEERING_PID_INTERVAL_MS` | Intervalo de atualização do PID de direção |
+| `STEERING_CENTER_ANGLE` | Define a posição neutra (em graus) aplicada no boot |
+| `STEERING_LEFT_LIMIT_DEGREES`, `STEERING_RIGHT_LIMIT_DEGREES` | Limite (em graus) para cada lado em relação ao centro |
 | `MOTOR_LEFT_INVERTED`, `MOTOR_RIGHT_INVERTED` | Ajustam a polaridade física de cada motor |
 
 Valores podem ser ajustados em tempo real via WebSocket para facilitar a calibração em pista.
+
+> **Dica:** os limites de direção vêm configurados para manter o servo entre 70° e 110° (centro em 90°). Ajuste `STEERING_LEFT_LIMIT_DEGREES` e `STEERING_RIGHT_LIMIT_DEGREES` caso a montagem permita um curso diferente em cada lado.
 
 ## Próximos passos sugeridos
 

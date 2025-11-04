@@ -94,6 +94,9 @@ void ConfigurationManager::loadDefaults() {
     current_ = RuntimeConfigSnapshot{};
     current_.motor_pid = PidConfig{2.5, 0.0, 0.35, 0.15, 20};
     current_.steering_pid = PidConfig{3.0, 0.0, 0.45, 0.2, 20};
+    current_.steering_center_angle = 90;
+    current_.steering_left_limit = 20;
+    current_.steering_right_limit = 20;
 }
 
 bool ConfigurationManager::loadFromFile(const std::string &path) {
@@ -191,6 +194,36 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
             return false;
         }
         current_.steering_sensitivity = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_CENTER_ANGLE") || iequals(key, "steering.center_angle")) {
+        auto parsed = parseInt(value);
+        if (!parsed) {
+            return false;
+        }
+        if (*parsed < 0 || *parsed > 180) {
+            return false;
+        }
+        current_.steering_center_angle = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_LEFT_LIMIT_DEGREES") || iequals(key, "steering.left_limit_degrees")) {
+        auto parsed = parseInt(value);
+        if (!parsed || *parsed < 0) {
+            return false;
+        }
+        current_.steering_left_limit = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_RIGHT_LIMIT_DEGREES") || iequals(key, "steering.right_limit_degrees")) {
+        auto parsed = parseInt(value);
+        if (!parsed || *parsed < 0) {
+            return false;
+        }
+        current_.steering_right_limit = *parsed;
         return true;
     }
 

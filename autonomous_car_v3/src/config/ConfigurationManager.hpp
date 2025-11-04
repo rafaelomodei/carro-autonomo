@@ -24,6 +24,9 @@ struct RuntimeConfigSnapshot {
     MotorPinConfig motor_pins;
     int steering_pwm_pin{13};
     double steering_sensitivity{1.0};
+    int steering_center_angle{90};
+    int steering_left_limit{20};
+    int steering_right_limit{20};
     bool motor_left_inverted{false};
     bool motor_right_inverted{true};
     PidConfig motor_pid;
