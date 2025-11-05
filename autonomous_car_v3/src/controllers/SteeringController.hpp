@@ -12,11 +12,11 @@ namespace autonomous_car::controllers {
 class SteeringController {
 public:
     struct DynamicsConfig {
-        double kp{3.0};
-        double ki{0.0};
-        double kd{0.45};
+        double kp{4.0};
+        double ki{0.8};
+        double kd{0.20};
         double output_limit{0.2};
-        int control_interval_ms{20};
+        int control_interval_ms{80};
     };
 
     struct AngleLimitConfig {
@@ -35,6 +35,7 @@ public:
     void setAngle(int angle);
 
     void setSteeringSensitivity(double sensitivity);
+    void setCommandStep(double step);
     void setDynamics(const DynamicsConfig &config);
     void configureAngleLimits(const AngleLimitConfig &config);
     void configureAngleLimits(int center_angle, int left_range, int right_range);
@@ -57,6 +58,7 @@ private:
     double angleToNormalized(int angle, const AngleLimitState &limits) const;
     void applyAngle(int angle, const AngleLimitState &limits);
     int toPwmValue(int angle) const;
+    void nudgeTarget(double delta);
 
     int pwm_pin_;
     int servo_min_angle_;
@@ -64,6 +66,7 @@ private:
     int min_pwm_;
     int max_pwm_;
     std::atomic<double> steering_sensitivity_;
+    std::atomic<double> command_step_;
 
     PidController pid_;
     std::thread control_thread_;

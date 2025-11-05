@@ -27,6 +27,7 @@ struct RuntimeConfigSnapshot {
     int steering_center_angle{90};
     int steering_left_limit{20};
     int steering_right_limit{20};
+    double steering_command_step{0.1};
     bool motor_left_inverted{false};
     bool motor_right_inverted{true};
     double motor_min_active_throttle{0.2};

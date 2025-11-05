@@ -93,10 +93,11 @@ void ConfigurationManager::loadDefaults() {
     std::lock_guard<std::mutex> lock(mutex_);
     current_ = RuntimeConfigSnapshot{};
     current_.motor_pid = PidConfig{2.5, 0.0, 0.35, 0.15, 20};
-    current_.steering_pid = PidConfig{3.0, 0.0, 0.45, 0.2, 20};
+    current_.steering_pid = PidConfig{4.0, 0.8, 0.20, 0.2, 80};
     current_.steering_center_angle = 90;
     current_.steering_left_limit = 20;
     current_.steering_right_limit = 20;
+    current_.steering_command_step = 0.1;
     current_.motor_min_active_throttle = 0.2;
 }
 
@@ -195,6 +196,15 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
             return false;
         }
         current_.steering_sensitivity = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_COMMAND_STEP") || iequals(key, "steering.command_step")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed <= 0.0) {
+            return false;
+        }
+        current_.steering_command_step = std::min(*parsed, 1.0);
         return true;
     }
 

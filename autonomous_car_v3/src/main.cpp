@@ -110,6 +110,7 @@ int main() {
     steering_dynamics.control_interval_ms = runtime_config.steering_pid.control_interval_ms;
     steering_controller.setDynamics(steering_dynamics);
     steering_controller.setSteeringSensitivity(runtime_config.steering_sensitivity);
+    steering_controller.setCommandStep(runtime_config.steering_command_step);
 
     CommandDispatcher dispatcher;
     dispatcher.registerCommand("forward", std::make_unique<ForwardCommand>(motor_controller));
@@ -146,6 +147,7 @@ int main() {
         updated_steering_dynamics.control_interval_ms = updated_snapshot.steering_pid.control_interval_ms;
         steering_controller.setDynamics(updated_steering_dynamics);
         steering_controller.setSteeringSensitivity(updated_snapshot.steering_sensitivity);
+        steering_controller.setCommandStep(updated_snapshot.steering_command_step);
         steering_controller.configureAngleLimits(updated_snapshot.steering_center_angle,
                                                  updated_snapshot.steering_left_limit,
                                                  updated_snapshot.steering_right_limit);

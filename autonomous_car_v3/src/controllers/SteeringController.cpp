@@ -22,8 +22,9 @@ SteeringController::SteeringController(int pwm_pin, int servo_min_angle, int ser
       min_pwm_{kDefaultMinPwm},
       max_pwm_{kDefaultMaxPwm},
       steering_sensitivity_{1.0},
+      command_step_{0.1},
       running_{true},
-      control_interval_ms_{20},
+      control_interval_ms_{80},
       target_offset_{0.0},
       current_offset_{0.0} {
     angle_limits_ = computeAngleState(AngleLimitConfig{});
@@ -46,13 +47,29 @@ SteeringController::~SteeringController() {
 }
 
 void SteeringController::turnLeft(double intensity) {
-    double normalized = -std::clamp(std::abs(intensity), 0.0, 1.0);
-    setSteering(normalized);
+    double sanitized = std::abs(intensity);
+    if (sanitized <= 0.0) {
+        sanitized = 1.0;
+    }
+    sanitized = std::clamp(sanitized, 0.0, 1.0);
+    double step = command_step_.load();
+    if (step <= 0.0) {
+        step = 0.1;
+    }
+    nudgeTarget(-step * sanitized);
 }
 
 void SteeringController::turnRight(double intensity) {
-    double normalized = std::clamp(intensity, 0.0, 1.0);
-    setSteering(normalized);
+    double sanitized = std::abs(intensity);
+    if (sanitized <= 0.0) {
+        sanitized = 1.0;
+    }
+    sanitized = std::clamp(sanitized, 0.0, 1.0);
+    double step = command_step_.load();
+    if (step <= 0.0) {
+        step = 0.1;
+    }
+    nudgeTarget(step * sanitized);
 }
 
 void SteeringController::center() {
@@ -79,6 +96,13 @@ void SteeringController::setSteeringSensitivity(double sensitivity) {
         return;
     }
     steering_sensitivity_.store(sensitivity);
+}
+
+void SteeringController::setCommandStep(double step) {
+    if (!std::isfinite(step) || step <= 0.0) {
+        return;
+    }
+    command_step_.store(std::min(step, 1.0));
 }
 
 void SteeringController::setDynamics(const DynamicsConfig &config) {
@@ -200,6 +224,15 @@ void SteeringController::applyAngle(int angle, const AngleLimitState &limits) {
     int clamped = std::clamp(angle, limits.min_angle, limits.max_angle);
     int pwm_value = toPwmValue(clamped);
     softPwmWrite(pwm_pin_, pwm_value);
+}
+
+void SteeringController::nudgeTarget(double delta) {
+    if (!std::isfinite(delta) || delta == 0.0) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    double next = std::clamp(target_offset_ + delta, kMinNormalizedSteering, kMaxNormalizedSteering);
+    target_offset_ = next;
 }
 
 int SteeringController::toPwmValue(int angle) const {

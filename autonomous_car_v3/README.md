@@ -68,6 +68,9 @@ O servidor WebSocket será iniciado em `ws://0.0.0.0:8080`. Envie mensagens de t
   - `command:steering=-35` (valor normalizado: `-100` a `100` ou `-1.0` a `1.0`)
 - `config:<chave>=<valor>` – ajusta parâmetros em tempo de execução (por exemplo `config:motor.pid.kp=3.1`).
 
+Comandos discretos de direção (`left`/`right`) deslocam o alvo apenas um incremento por acionamento (`STEERING_COMMAND_STEP`).
+Pressione continuamente para acumular o giro até atingir o limite desejado.
+
 Os comandos podem ser disparados rapidamente em sequência; o controlador PID interno cuida da suavização das transições, evitando travamentos ao alternar entre frente/ré ou esquerda/direita.
 
 ### Ajuste fino via PID
@@ -83,6 +86,7 @@ Os arquivos `.env` (e o canal `config`) aceitam os parâmetros abaixo para calib
 | `STEERING_PID_KP`, `STEERING_PID_KI`, `STEERING_PID_KD` | Ganhos do PID de direção |
 | `STEERING_PID_OUTPUT_LIMIT` | Velocidade máxima de variação do ângulo |
 | `STEERING_PID_INTERVAL_MS` | Intervalo de atualização do PID de direção |
+| `STEERING_COMMAND_STEP` | Incremento aplicado a cada comando `left`/`right` (0–1) |
 | `STEERING_CENTER_ANGLE` | Define a posição neutra (em graus) aplicada no boot |
 | `STEERING_LEFT_LIMIT_DEGREES`, `STEERING_RIGHT_LIMIT_DEGREES` | Limite (em graus) para cada lado em relação ao centro |
 | `MOTOR_LEFT_INVERTED`, `MOTOR_RIGHT_INVERTED` | Ajustam a polaridade física de cada motor |
