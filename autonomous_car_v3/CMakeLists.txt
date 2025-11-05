@@ -34,4 +34,5 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         wiringPi
         Threads::Threads
+        atomic
 )
