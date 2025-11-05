@@ -52,6 +52,7 @@ private:
     std::thread control_thread_;
     std::atomic<bool> running_;
     std::atomic<int> control_interval_ms_;
+    std::atomic<double> max_delta_per_interval_;
 
     mutable std::mutex state_mutex_;
     double target_throttle_;

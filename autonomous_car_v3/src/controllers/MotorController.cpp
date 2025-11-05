@@ -26,10 +26,13 @@ MotorController::MotorController(int forward_pin_left, int backward_pin_left,
       pwm_range_{kDefaultPwmRange},
       running_{true},
       control_interval_ms_{20},
+      max_delta_per_interval_{0.15},
       target_throttle_{0.0},
       current_throttle_{0.0} {
     initializePwm();
-    pid_.setOutputLimits(-0.15, 0.15);
+
+    pid_.setCoefficients(2.5, 0.0, 0.35);
+    pid_.setOutputLimits(-max_delta_per_interval_.load(), max_delta_per_interval_.load());
     pid_.reset();
 
     control_thread_ = std::thread(&MotorController::controlLoop, this);
@@ -78,10 +81,11 @@ void MotorController::setThrottle(double normalized_value) {
 void MotorController::setDynamics(const DynamicsConfig &config) {
     invert_left_ = config.invert_left;
     invert_right_ = config.invert_right;
-    pid_.setCoefficients(config.kp, config.ki, config.kd);
-    double limit = std::clamp(std::abs(config.output_limit), 0.01, 1.0);
-    pid_.setOutputLimits(-limit, limit);
     control_interval_ms_.store(std::max(config.control_interval_ms, 5));
+    double limit = std::clamp(std::abs(config.output_limit), 0.01, 1.0);
+    max_delta_per_interval_.store(limit);
+    pid_.setCoefficients(config.kp, config.ki, config.kd);
+    pid_.setOutputLimits(-limit, limit);
     pid_.reset();
 }
 
@@ -123,8 +127,23 @@ void MotorController::controlLoop() {
             current = current_throttle_;
         }
 
-        double delta = pid_.compute(target, current, dt);
-        double updated = std::clamp(current + delta, kMinNormalizedThrottle, kMaxNormalizedThrottle);
+        double desired_change = target - current;
+        double max_delta = max_delta_per_interval_.load();
+        double pid_delta = pid_.compute(target, current, dt);
+        double clamped_delta = std::clamp(pid_delta, -max_delta, max_delta);
+        double fallback_delta = std::clamp(desired_change, -max_delta, max_delta);
+
+        if (desired_change > 0.0) {
+            if (clamped_delta <= 0.0) {
+                clamped_delta = std::max(0.0, fallback_delta);
+            }
+        } else if (desired_change < 0.0) {
+            if (clamped_delta >= 0.0) {
+                clamped_delta = std::min(0.0, fallback_delta);
+            }
+        }
+
+        double updated = std::clamp(current + clamped_delta, kMinNormalizedThrottle, kMaxNormalizedThrottle);
         applyThrottle(updated);
 
         {
