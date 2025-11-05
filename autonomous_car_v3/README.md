@@ -79,6 +79,7 @@ Os arquivos `.env` (e o canal `config`) aceitam os parâmetros abaixo para calib
 | `MOTOR_PID_KP`, `MOTOR_PID_KI`, `MOTOR_PID_KD` | Ganhos do PID do motor (aceleração/frenagem) |
 | `MOTOR_PID_OUTPUT_LIMIT` | Delta máximo aplicado a cada iteração para limitar a rampa |
 | `MOTOR_PID_INTERVAL_MS` | Intervalo de atualização do PID do motor em ms |
+| `MOTOR_MIN_ACTIVE_THROTTLE` | Fator mínimo (0–1) necessário para acionar o H-bridge sem travar |
 | `STEERING_PID_KP`, `STEERING_PID_KI`, `STEERING_PID_KD` | Ganhos do PID de direção |
 | `STEERING_PID_OUTPUT_LIMIT` | Velocidade máxima de variação do ângulo |
 | `STEERING_PID_INTERVAL_MS` | Intervalo de atualização do PID de direção |
@@ -86,7 +87,7 @@ Os arquivos `.env` (e o canal `config`) aceitam os parâmetros abaixo para calib
 | `STEERING_LEFT_LIMIT_DEGREES`, `STEERING_RIGHT_LIMIT_DEGREES` | Limite (em graus) para cada lado em relação ao centro |
 | `MOTOR_LEFT_INVERTED`, `MOTOR_RIGHT_INVERTED` | Ajustam a polaridade física de cada motor |
 
-Valores podem ser ajustados em tempo real via WebSocket para facilitar a calibração em pista.
+Os valores padrão vivem em `config/autonomous_car.env` (e em um arquivo `.env` de conveniência na raiz do projeto). Copie-os para outro local ou edite-os diretamente conforme a sua necessidade. Valores podem ser ajustados em tempo real via WebSocket para facilitar a calibração em pista.
 
 > **Dica:** os limites de direção vêm configurados para manter o servo entre 70° e 110° (centro em 90°). Ajuste `STEERING_LEFT_LIMIT_DEGREES` e `STEERING_RIGHT_LIMIT_DEGREES` caso a montagem permita um curso diferente em cada lado.
 

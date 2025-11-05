@@ -2,15 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 
-#include <softPwm.h>
 #include <wiringPi.h>
 
 namespace autonomous_car::controllers {
 
 namespace {
-constexpr int kDefaultPwmRange = 100;
 constexpr double kMinNormalizedThrottle = -1.0;
 constexpr double kMaxNormalizedThrottle = 1.0;
 }
@@ -23,13 +20,13 @@ MotorController::MotorController(int forward_pin_left, int backward_pin_left,
       backward_pin_right_{backward_pin_right},
       invert_left_{false},
       invert_right_{true},
-      pwm_range_{kDefaultPwmRange},
       running_{true},
       control_interval_ms_{20},
       max_delta_per_interval_{0.15},
+      min_active_throttle_{0.2},
       target_throttle_{0.0},
       current_throttle_{0.0} {
-    initializePwm();
+    initializePins();
 
     pid_.setCoefficients(2.5, 0.0, 0.35);
     pid_.setOutputLimits(-max_delta_per_interval_.load(), max_delta_per_interval_.load());
@@ -45,15 +42,10 @@ MotorController::~MotorController() {
     }
 
     applyThrottle(0.0);
-    softPwmWrite(forward_pin_left_, 0);
-    softPwmWrite(backward_pin_left_, 0);
-    softPwmWrite(forward_pin_right_, 0);
-    softPwmWrite(backward_pin_right_, 0);
-
-    softPwmStop(forward_pin_left_);
-    softPwmStop(backward_pin_left_);
-    softPwmStop(forward_pin_right_);
-    softPwmStop(backward_pin_right_);
+    digitalWrite(forward_pin_left_, LOW);
+    digitalWrite(backward_pin_left_, LOW);
+    digitalWrite(forward_pin_right_, LOW);
+    digitalWrite(backward_pin_right_, LOW);
 }
 
 void MotorController::forward(double intensity) {
@@ -84,29 +76,23 @@ void MotorController::setDynamics(const DynamicsConfig &config) {
     control_interval_ms_.store(std::max(config.control_interval_ms, 5));
     double limit = std::clamp(std::abs(config.output_limit), 0.01, 1.0);
     max_delta_per_interval_.store(limit);
+    double min_active = std::clamp(std::abs(config.min_active_throttle), 0.0, 1.0);
+    min_active_throttle_.store(min_active);
     pid_.setCoefficients(config.kp, config.ki, config.kd);
     pid_.setOutputLimits(-limit, limit);
     pid_.reset();
 }
 
-void MotorController::initializePwm() {
+void MotorController::initializePins() {
     pinMode(forward_pin_left_, OUTPUT);
     pinMode(backward_pin_left_, OUTPUT);
     pinMode(forward_pin_right_, OUTPUT);
     pinMode(backward_pin_right_, OUTPUT);
 
-    if (softPwmCreate(forward_pin_left_, 0, pwm_range_) != 0) {
-        std::cerr << "Falha ao iniciar PWM no pino " << forward_pin_left_ << std::endl;
-    }
-    if (softPwmCreate(backward_pin_left_, 0, pwm_range_) != 0) {
-        std::cerr << "Falha ao iniciar PWM no pino " << backward_pin_left_ << std::endl;
-    }
-    if (softPwmCreate(forward_pin_right_, 0, pwm_range_) != 0) {
-        std::cerr << "Falha ao iniciar PWM no pino " << forward_pin_right_ << std::endl;
-    }
-    if (softPwmCreate(backward_pin_right_, 0, pwm_range_) != 0) {
-        std::cerr << "Falha ao iniciar PWM no pino " << backward_pin_right_ << std::endl;
-    }
+    digitalWrite(forward_pin_left_, LOW);
+    digitalWrite(backward_pin_left_, LOW);
+    digitalWrite(forward_pin_right_, LOW);
+    digitalWrite(backward_pin_right_, LOW);
 }
 
 void MotorController::controlLoop() {
@@ -162,22 +148,26 @@ void MotorController::applyThrottle(double throttle) {
 
 void MotorController::applyMotor(int forward_pin, int backward_pin, double throttle, bool invert) {
     double effective = invert ? -throttle : throttle;
-    int intensity = static_cast<int>(std::round(std::abs(effective) * pwm_range_));
+    double threshold = std::max(min_active_throttle_.load(), 0.0);
 
-    if (intensity <= 0) {
-        softPwmWrite(forward_pin, 0);
-        softPwmWrite(backward_pin, 0);
+    bool forward = false;
+    bool backward = false;
+    if (threshold <= 0.0) {
+        forward = effective > 0.0;
+        backward = effective < 0.0;
+    } else {
+        forward = effective >= threshold;
+        backward = effective <= -threshold;
+    }
+
+    if (!forward && !backward) {
+        digitalWrite(forward_pin, LOW);
+        digitalWrite(backward_pin, LOW);
         return;
     }
 
-    bool forward = effective >= 0.0;
-    if (forward) {
-        softPwmWrite(forward_pin, intensity);
-        softPwmWrite(backward_pin, 0);
-    } else {
-        softPwmWrite(forward_pin, 0);
-        softPwmWrite(backward_pin, intensity);
-    }
+    digitalWrite(forward_pin, forward ? HIGH : LOW);
+    digitalWrite(backward_pin, backward ? HIGH : LOW);
 }
 
 } // namespace autonomous_car::controllers

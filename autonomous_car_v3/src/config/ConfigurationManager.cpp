@@ -97,6 +97,7 @@ void ConfigurationManager::loadDefaults() {
     current_.steering_center_angle = 90;
     current_.steering_left_limit = 20;
     current_.steering_right_limit = 20;
+    current_.motor_min_active_throttle = 0.2;
 }
 
 bool ConfigurationManager::loadFromFile(const std::string &path) {
@@ -251,6 +252,15 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
             return false;
         }
         current_.motor_pid.kp = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_MIN_ACTIVE_THROTTLE") || iequals(key, "motor.min_active_throttle")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed < 0.0) {
+            return false;
+        }
+        current_.motor_min_active_throttle = std::min(*parsed, 1.0);
         return true;
     }
 
