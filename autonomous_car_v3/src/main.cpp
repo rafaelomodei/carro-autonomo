@@ -94,12 +94,7 @@ int main() {
     MotorController::DynamicsConfig motor_dynamics;
     motor_dynamics.invert_left = runtime_config.motor_left_inverted;
     motor_dynamics.invert_right = runtime_config.motor_right_inverted;
-    motor_dynamics.kp = runtime_config.motor_pid.kp;
-    motor_dynamics.ki = runtime_config.motor_pid.ki;
-    motor_dynamics.kd = runtime_config.motor_pid.kd;
-    motor_dynamics.output_limit = runtime_config.motor_pid.output_limit;
-    motor_dynamics.control_interval_ms = runtime_config.motor_pid.control_interval_ms;
-    motor_dynamics.min_active_throttle = runtime_config.motor_min_active_throttle;
+    motor_dynamics.command_timeout_ms = runtime_config.motor_command_timeout_ms;
     motor_controller.setDynamics(motor_dynamics);
 
     SteeringController::DynamicsConfig steering_dynamics;
@@ -131,12 +126,7 @@ int main() {
         MotorController::DynamicsConfig updated_motor_dynamics;
         updated_motor_dynamics.invert_left = updated_snapshot.motor_left_inverted;
         updated_motor_dynamics.invert_right = updated_snapshot.motor_right_inverted;
-        updated_motor_dynamics.kp = updated_snapshot.motor_pid.kp;
-        updated_motor_dynamics.ki = updated_snapshot.motor_pid.ki;
-        updated_motor_dynamics.kd = updated_snapshot.motor_pid.kd;
-        updated_motor_dynamics.output_limit = updated_snapshot.motor_pid.output_limit;
-        updated_motor_dynamics.control_interval_ms = updated_snapshot.motor_pid.control_interval_ms;
-        updated_motor_dynamics.min_active_throttle = updated_snapshot.motor_min_active_throttle;
+        updated_motor_dynamics.command_timeout_ms = updated_snapshot.motor_command_timeout_ms;
         motor_controller.setDynamics(updated_motor_dynamics);
 
         SteeringController::DynamicsConfig updated_steering_dynamics;

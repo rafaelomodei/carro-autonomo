@@ -66,23 +66,20 @@ O servidor WebSocket será iniciado em `ws://0.0.0.0:8080`. Envie mensagens de t
   - `command:center`
   - `command:throttle=75` (valor normalizado: `-100` a `100` ou `-1.0` a `1.0`)
   - `command:steering=-35` (valor normalizado: `-100` a `100` ou `-1.0` a `1.0`)
-- `config:<chave>=<valor>` – ajusta parâmetros em tempo de execução (por exemplo `config:motor.pid.kp=3.1`).
+- `config:<chave>=<valor>` – ajusta parâmetros em tempo de execução (por exemplo `config:motor.command_timeout_ms=200`).
 
 Comandos discretos de direção (`left`/`right`) deslocam o alvo apenas um incremento por acionamento (`STEERING_COMMAND_STEP`).
 Pressione continuamente para acumular o giro até atingir o limite desejado.
 
-Os comandos podem ser disparados rapidamente em sequência; o controlador PID interno cuida da suavização das transições, evitando travamentos ao alternar entre frente/ré ou esquerda/direita.
+Os comandos podem ser disparados rapidamente em sequência. Os motores funcionam de forma binária (apenas frente, ré ou parado) e interrompem o movimento automaticamente quando novas ordens deixam de chegar por mais tempo que o limite configurado.
 
-### Ajuste fino via PID
+### Parâmetros de configuração
 
 Os arquivos `.env` (e o canal `config`) aceitam os parâmetros abaixo para calibrar a dinâmica do carro:
 
 | Chave | Descrição |
 |-------|-----------|
-| `MOTOR_PID_KP`, `MOTOR_PID_KI`, `MOTOR_PID_KD` | Ganhos do PID do motor (aceleração/frenagem) |
-| `MOTOR_PID_OUTPUT_LIMIT` | Delta máximo aplicado a cada iteração para limitar a rampa |
-| `MOTOR_PID_INTERVAL_MS` | Intervalo de atualização do PID do motor em ms |
-| `MOTOR_MIN_ACTIVE_THROTTLE` | Fator mínimo (0–1) necessário para acionar o H-bridge sem travar |
+| `MOTOR_COMMAND_TIMEOUT_MS` | Tempo máximo (ms) sem novos comandos antes de parar os motores |
 | `STEERING_PID_KP`, `STEERING_PID_KI`, `STEERING_PID_KD` | Ganhos do PID de direção |
 | `STEERING_PID_OUTPUT_LIMIT` | Velocidade máxima de variação do ângulo |
 | `STEERING_PID_INTERVAL_MS` | Intervalo de atualização do PID de direção |

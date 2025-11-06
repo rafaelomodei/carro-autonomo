@@ -10,7 +10,9 @@ namespace autonomous_car::controllers {
 namespace {
 constexpr double kMinNormalizedThrottle = -1.0;
 constexpr double kMaxNormalizedThrottle = 1.0;
-}
+constexpr int kDefaultCommandTimeoutMs = 150;
+constexpr auto kControlInterval = std::chrono::milliseconds(10);
+} // namespace
 
 MotorController::MotorController(int forward_pin_left, int backward_pin_left,
                                  int forward_pin_right, int backward_pin_right)
@@ -21,16 +23,12 @@ MotorController::MotorController(int forward_pin_left, int backward_pin_left,
       invert_left_{false},
       invert_right_{true},
       running_{true},
-      control_interval_ms_{20},
-      max_delta_per_interval_{0.15},
-      min_active_throttle_{0.2},
-      target_throttle_{0.0},
-      current_throttle_{0.0} {
+      command_timeout_ms_{kDefaultCommandTimeoutMs},
+      requested_motion_{Motion::Stopped},
+      applied_motion_{Motion::Stopped},
+      command_active_{false},
+      last_command_time_{std::chrono::steady_clock::now()} {
     initializePins();
-
-    pid_.setCoefficients(2.5, 0.0, 0.35);
-    pid_.setOutputLimits(-max_delta_per_interval_.load(), max_delta_per_interval_.load());
-    pid_.reset();
 
     control_thread_ = std::thread(&MotorController::controlLoop, this);
 }
@@ -41,7 +39,7 @@ MotorController::~MotorController() {
         control_thread_.join();
     }
 
-    applyThrottle(0.0);
+    applyMotion(Motion::Stopped);
     digitalWrite(forward_pin_left_, LOW);
     digitalWrite(backward_pin_left_, LOW);
     digitalWrite(forward_pin_right_, LOW);
@@ -50,37 +48,43 @@ MotorController::~MotorController() {
 
 void MotorController::forward(double intensity) {
     double normalized = std::clamp(intensity, 0.0, 1.0);
-    setThrottle(normalized);
+    if (normalized <= 0.0) {
+        stop();
+        return;
+    }
+    setCommand(Motion::Forward);
 }
 
 void MotorController::backward(double intensity) {
-    double normalized = -std::clamp(std::abs(intensity), 0.0, 1.0);
-    setThrottle(normalized);
+    double normalized = std::clamp(std::abs(intensity), 0.0, 1.0);
+    if (normalized <= 0.0) {
+        stop();
+        return;
+    }
+    setCommand(Motion::Backward);
 }
 
 void MotorController::stop() {
-    setThrottle(0.0);
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    requested_motion_ = Motion::Stopped;
+    command_active_ = false;
 }
 
 void MotorController::setThrottle(double normalized_value) {
     double clamped = std::clamp(normalized_value, kMinNormalizedThrottle, kMaxNormalizedThrottle);
-    {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        target_throttle_ = clamped;
+    if (clamped > 0.0) {
+        setCommand(Motion::Forward);
+    } else if (clamped < 0.0) {
+        setCommand(Motion::Backward);
+    } else {
+        stop();
     }
 }
 
 void MotorController::setDynamics(const DynamicsConfig &config) {
     invert_left_ = config.invert_left;
     invert_right_ = config.invert_right;
-    control_interval_ms_.store(std::max(config.control_interval_ms, 5));
-    double limit = std::clamp(std::abs(config.output_limit), 0.01, 1.0);
-    max_delta_per_interval_.store(limit);
-    double min_active = std::clamp(std::abs(config.min_active_throttle), 0.0, 1.0);
-    min_active_throttle_.store(min_active);
-    pid_.setCoefficients(config.kp, config.ki, config.kd);
-    pid_.setOutputLimits(-limit, limit);
-    pid_.reset();
+    command_timeout_ms_.store(std::max(config.command_timeout_ms, 0));
 }
 
 void MotorController::initializePins() {
@@ -96,75 +100,67 @@ void MotorController::initializePins() {
 }
 
 void MotorController::controlLoop() {
-    auto previous = std::chrono::steady_clock::now();
     while (running_.load()) {
-        auto interval = std::chrono::milliseconds(control_interval_ms_.load());
-        std::this_thread::sleep_for(interval);
-
+        Motion desired = Motion::Stopped;
+        bool should_apply = false;
         auto now = std::chrono::steady_clock::now();
-        double dt = std::chrono::duration<double>(now - previous).count();
-        previous = now;
-
-        double target = 0.0;
-        double current = 0.0;
-        {
-            std::lock_guard<std::mutex> lock(state_mutex_);
-            target = target_throttle_;
-            current = current_throttle_;
-        }
-
-        double desired_change = target - current;
-        double max_delta = max_delta_per_interval_.load();
-        double pid_delta = pid_.compute(target, current, dt);
-        double clamped_delta = std::clamp(pid_delta, -max_delta, max_delta);
-        double fallback_delta = std::clamp(desired_change, -max_delta, max_delta);
-
-        if (desired_change > 0.0) {
-            if (clamped_delta <= 0.0) {
-                clamped_delta = std::max(0.0, fallback_delta);
-            }
-        } else if (desired_change < 0.0) {
-            if (clamped_delta >= 0.0) {
-                clamped_delta = std::min(0.0, fallback_delta);
-            }
-        }
-
-        double updated = std::clamp(current + clamped_delta, kMinNormalizedThrottle, kMaxNormalizedThrottle);
-        applyThrottle(updated);
+        auto timeout = std::chrono::milliseconds(command_timeout_ms_.load());
 
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            current_throttle_ = updated;
+            if (command_active_) {
+                if (timeout.count() == 0 || now - last_command_time_ <= timeout) {
+                    desired = requested_motion_;
+                } else {
+                    command_active_ = false;
+                    requested_motion_ = Motion::Stopped;
+                    desired = Motion::Stopped;
+                }
+            } else {
+                desired = requested_motion_;
+            }
+
+            if (desired != applied_motion_) {
+                applied_motion_ = desired;
+                should_apply = true;
+            }
+        }
+
+        if (should_apply) {
+            applyMotion(desired);
+        }
+
+        std::this_thread::sleep_for(kControlInterval);
+    }
+
+    applyMotion(Motion::Stopped);
+}
+
+void MotorController::setCommand(Motion motion) {
+    auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    requested_motion_ = motion;
+    command_active_ = true;
+    last_command_time_ = now;
+}
+
+void MotorController::applyMotion(Motion motion) {
+    applyMotor(forward_pin_left_, backward_pin_left_, motion, invert_left_);
+    applyMotor(forward_pin_right_, backward_pin_right_, motion, invert_right_);
+}
+
+void MotorController::applyMotor(int forward_pin, int backward_pin, Motion motion, bool invert) {
+    Motion effective_motion = motion;
+    if (invert) {
+        if (motion == Motion::Forward) {
+            effective_motion = Motion::Backward;
+        } else if (motion == Motion::Backward) {
+            effective_motion = Motion::Forward;
         }
     }
 
-    applyThrottle(0.0);
-}
-
-void MotorController::applyThrottle(double throttle) {
-    applyMotor(forward_pin_left_, backward_pin_left_, throttle, invert_left_);
-    applyMotor(forward_pin_right_, backward_pin_right_, throttle, invert_right_);
-}
-
-void MotorController::applyMotor(int forward_pin, int backward_pin, double throttle, bool invert) {
-    double effective = invert ? -throttle : throttle;
-    double threshold = std::max(min_active_throttle_.load(), 0.0);
-
-    bool forward = false;
-    bool backward = false;
-    if (threshold <= 0.0) {
-        forward = effective > 0.0;
-        backward = effective < 0.0;
-    } else {
-        forward = effective >= threshold;
-        backward = effective <= -threshold;
-    }
-
-    if (!forward && !backward) {
-        digitalWrite(forward_pin, LOW);
-        digitalWrite(backward_pin, LOW);
-        return;
-    }
+    bool forward = effective_motion == Motion::Forward;
+    bool backward = effective_motion == Motion::Backward;
 
     digitalWrite(forward_pin, forward ? HIGH : LOW);
     digitalWrite(backward_pin, backward ? HIGH : LOW);
