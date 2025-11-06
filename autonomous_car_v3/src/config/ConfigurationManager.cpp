@@ -57,6 +57,22 @@ std::optional<double> parseDouble(const std::string &value) {
     }
 }
 
+std::optional<bool> parseBool(const std::string &value) {
+    std::string lowered;
+    lowered.reserve(value.size());
+    for (char ch : value) {
+        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+
+    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") {
+        return true;
+    }
+    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") {
+        return false;
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 namespace autonomous_car::config {
@@ -76,6 +92,13 @@ RuntimeConfigSnapshot ConfigurationManager::snapshot() const {
 void ConfigurationManager::loadDefaults() {
     std::lock_guard<std::mutex> lock(mutex_);
     current_ = RuntimeConfigSnapshot{};
+    current_.motor_pid = PidConfig{2.5, 0.0, 0.35, 0.15, 20};
+    current_.steering_pid = PidConfig{4.0, 0.8, 0.20, 0.2, 80};
+    current_.steering_center_angle = 90;
+    current_.steering_left_limit = 20;
+    current_.steering_right_limit = 20;
+    current_.steering_command_step = 0.1;
+    current_.motor_min_active_throttle = 0.2;
 }
 
 bool ConfigurationManager::loadFromFile(const std::string &path) {
@@ -173,6 +196,162 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
             return false;
         }
         current_.steering_sensitivity = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_COMMAND_STEP") || iequals(key, "steering.command_step")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed <= 0.0) {
+            return false;
+        }
+        current_.steering_command_step = std::min(*parsed, 1.0);
+        return true;
+    }
+
+    if (iequals(key, "STEERING_CENTER_ANGLE") || iequals(key, "steering.center_angle")) {
+        auto parsed = parseInt(value);
+        if (!parsed) {
+            return false;
+        }
+        if (*parsed < 0 || *parsed > 180) {
+            return false;
+        }
+        current_.steering_center_angle = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_LEFT_LIMIT_DEGREES") || iequals(key, "steering.left_limit_degrees")) {
+        auto parsed = parseInt(value);
+        if (!parsed || *parsed < 0) {
+            return false;
+        }
+        current_.steering_left_limit = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_RIGHT_LIMIT_DEGREES") || iequals(key, "steering.right_limit_degrees")) {
+        auto parsed = parseInt(value);
+        if (!parsed || *parsed < 0) {
+            return false;
+        }
+        current_.steering_right_limit = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_LEFT_INVERTED") || iequals(key, "motor.left_inverted")) {
+        auto parsed = parseBool(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.motor_left_inverted = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_RIGHT_INVERTED") || iequals(key, "motor.right_inverted")) {
+        auto parsed = parseBool(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.motor_right_inverted = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_PID_KP") || iequals(key, "motor.pid.kp")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.motor_pid.kp = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_MIN_ACTIVE_THROTTLE") || iequals(key, "motor.min_active_throttle")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed < 0.0) {
+            return false;
+        }
+        current_.motor_min_active_throttle = std::min(*parsed, 1.0);
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_PID_KI") || iequals(key, "motor.pid.ki")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.motor_pid.ki = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_PID_KD") || iequals(key, "motor.pid.kd")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.motor_pid.kd = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_PID_OUTPUT_LIMIT") || iequals(key, "motor.pid.output_limit")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed <= 0.0) {
+            return false;
+        }
+        current_.motor_pid.output_limit = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "MOTOR_PID_INTERVAL_MS") || iequals(key, "motor.pid.interval_ms")) {
+        auto parsed = parseInt(value);
+        if (!parsed || *parsed <= 0) {
+            return false;
+        }
+        current_.motor_pid.control_interval_ms = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_PID_KP") || iequals(key, "steering.pid.kp")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.steering_pid.kp = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_PID_KI") || iequals(key, "steering.pid.ki")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.steering_pid.ki = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_PID_KD") || iequals(key, "steering.pid.kd")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.steering_pid.kd = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_PID_OUTPUT_LIMIT") || iequals(key, "steering.pid.output_limit")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed <= 0.0) {
+            return false;
+        }
+        current_.steering_pid.output_limit = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "STEERING_PID_INTERVAL_MS") || iequals(key, "steering.pid.interval_ms")) {
+        auto parsed = parseInt(value);
+        if (!parsed || *parsed <= 0) {
+            return false;
+        }
+        current_.steering_pid.control_interval_ms = *parsed;
         return true;
     }
 

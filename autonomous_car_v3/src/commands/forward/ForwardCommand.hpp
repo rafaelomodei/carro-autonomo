@@ -8,7 +8,7 @@ namespace autonomous_car::commands {
 class ForwardCommand : public Command {
 public:
     explicit ForwardCommand(controllers::MotorController &motor_controller);
-    void execute() override;
+    void execute(double intensity) override;
 
 private:
     controllers::MotorController &motor_controller_;

@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <atomic>
 #include <cctype>
@@ -64,7 +65,13 @@ std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
     if (normalized_channel == "command") {
         ParsedMessage parsed;
         parsed.channel = MessageChannel::Command;
-        parsed.key = remainder;
+        auto equals_pos = remainder.find('=');
+        if (equals_pos == std::string::npos) {
+            parsed.key = remainder;
+        } else {
+            parsed.key = trim(remainder.substr(0, equals_pos));
+            parsed.value = trim(remainder.substr(equals_pos + 1));
+        }
         return parsed;
     }
 
@@ -81,6 +88,31 @@ std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
     }
 
     return std::nullopt;
+}
+
+std::optional<double> parseCommandValue(const std::optional<std::string> &raw_value) {
+    if (!raw_value || raw_value->empty()) {
+        return std::nullopt;
+    }
+
+    std::string sanitized = trim(*raw_value);
+    if (!sanitized.empty() && sanitized.back() == '%') {
+        sanitized.pop_back();
+    }
+
+    try {
+        double parsed = std::stod(sanitized);
+        if (!std::isfinite(parsed)) {
+            return std::nullopt;
+        }
+        if (std::abs(parsed) > 1.0) {
+            parsed /= 100.0;
+        }
+        parsed = std::clamp(parsed, -1.0, 1.0);
+        return parsed;
+    } catch (const std::exception &) {
+        return std::nullopt;
+    }
 }
 
 class Sha1 {
@@ -488,7 +520,14 @@ void WebSocketServer::run() {
             }
 
             if (parsed_message->channel == MessageChannel::Command) {
-                bool handled = dispatcher_.dispatch(parsed_message->key);
+                auto normalized_value = parseCommandValue(parsed_message->value);
+                if (parsed_message->value && !normalized_value) {
+                    std::cerr << "Valor de comando inválido: " << *parsed_message->value
+                              << " para comando " << parsed_message->key << std::endl;
+                    continue;
+                }
+
+                bool handled = dispatcher_.dispatch(parsed_message->key, normalized_value);
                 if (handled) {
                     std::cout << "Comando aceito: " << parsed_message->key << std::endl;
                 } else {

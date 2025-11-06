@@ -5,7 +5,7 @@ namespace autonomous_car::commands {
 CenterSteeringCommand::CenterSteeringCommand(controllers::SteeringController &steering_controller)
     : steering_controller_{steering_controller} {}
 
-void CenterSteeringCommand::execute() {
+void CenterSteeringCommand::execute(double) {
     steering_controller_.center();
 }
 
