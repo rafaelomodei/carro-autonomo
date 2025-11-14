@@ -27,11 +27,6 @@ public:
     void configureAngleLimits(const AngleLimitConfig &config);
     void configureAngleLimits(int center_angle, int left_range, int right_range);
 
-private:
-    void initializePwm();
-    void applyCurrentSteering();
-    void applySmoothedSteering(double target, double sensitivity, const AngleLimitState &limits);
-    double applySensitivity(double normalized_value, double sensitivity) const;
     struct AngleLimitState {
         int center_angle{90};
         int left_range{20};
@@ -40,6 +35,11 @@ private:
         int max_angle{110};
     };
 
+private:
+    void initializePwm();
+    void applyCurrentSteering();
+    void applySmoothedSteering(double target, double sensitivity, const AngleLimitState &limits);
+    double applySensitivity(double normalized_value, double sensitivity) const;
     AngleLimitState computeAngleState(const AngleLimitConfig &config) const;
     AngleLimitState computeAngleState(int center_angle, int left_range, int right_range) const;
     AngleLimitState loadAngleLimits() const;
