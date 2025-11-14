@@ -1,24 +1,12 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
 #include <mutex>
-#include <thread>
-
-#include "controllers/PidController.hpp"
 
 namespace autonomous_car::controllers {
 
 class SteeringController {
 public:
-    struct DynamicsConfig {
-        double kp{4.0};
-        double ki{0.8};
-        double kd{0.20};
-        double output_limit{0.2};
-        int control_interval_ms{80};
-    };
-
     struct AngleLimitConfig {
         int center_angle{90};
         int left_range{20};
@@ -36,13 +24,9 @@ public:
 
     void setSteeringSensitivity(double sensitivity);
     void setCommandStep(double step);
-    void setDynamics(const DynamicsConfig &config);
     void configureAngleLimits(const AngleLimitConfig &config);
     void configureAngleLimits(int center_angle, int left_range, int right_range);
 
-private:
-    void initializePwm();
-    void controlLoop();
     struct AngleLimitState {
         int center_angle{90};
         int left_range{20};
@@ -51,6 +35,11 @@ private:
         int max_angle{110};
     };
 
+private:
+    void initializePwm();
+    void applyCurrentSteering();
+    void applySmoothedSteering(double target, double sensitivity, const AngleLimitState &limits);
+    double applySensitivity(double normalized_value, double sensitivity) const;
     AngleLimitState computeAngleState(const AngleLimitConfig &config) const;
     AngleLimitState computeAngleState(int center_angle, int left_range, int right_range) const;
     AngleLimitState loadAngleLimits() const;
@@ -68,15 +57,9 @@ private:
     std::atomic<double> steering_sensitivity_;
     std::atomic<double> command_step_;
 
-    PidController pid_;
-    std::thread control_thread_;
-    std::atomic<bool> running_;
-    std::atomic<int> control_interval_ms_;
-
     mutable std::mutex state_mutex_;
     AngleLimitState angle_limits_;
     double target_offset_;
-    double current_offset_;
 };
 
 } // namespace autonomous_car::controllers

@@ -4,7 +4,8 @@
 
 namespace autonomous_car::controllers {
 
-class PidController {
+class [[deprecated("O controle PID da direção está obsoleto até que o pipeline de correção seja reintroduzido")]]
+    PidController {
 public:
     PidController();
 

@@ -1,3 +1,4 @@
+#include <atomic>
 #include <chrono>
 #include <csignal>
 #include <filesystem>
@@ -16,6 +17,7 @@
 #include "commands/stop/StopCommand.hpp"
 #include "commands/turn_left/TurnLeftCommand.hpp"
 #include "commands/turn_right/TurnRightCommand.hpp"
+#include "common/DrivingMode.hpp"
 #include "config/ConfigurationManager.hpp"
 #include "controllers/CommandDispatcher.hpp"
 #include "controllers/MotorController.hpp"
@@ -82,6 +84,7 @@ int main() {
     }
 
     auto runtime_config = config_manager.snapshot();
+    std::atomic<autonomous_car::DrivingMode> active_driving_mode{runtime_config.driving_mode};
 
     MotorController motor_controller(runtime_config.motor_pins.forward_left,
                                      runtime_config.motor_pins.backward_left,
@@ -97,13 +100,6 @@ int main() {
     motor_dynamics.command_timeout_ms = runtime_config.motor_command_timeout_ms;
     motor_controller.setDynamics(motor_dynamics);
 
-    SteeringController::DynamicsConfig steering_dynamics;
-    steering_dynamics.kp = runtime_config.steering_pid.kp;
-    steering_dynamics.ki = runtime_config.steering_pid.ki;
-    steering_dynamics.kd = runtime_config.steering_pid.kd;
-    steering_dynamics.output_limit = runtime_config.steering_pid.output_limit;
-    steering_dynamics.control_interval_ms = runtime_config.steering_pid.control_interval_ms;
-    steering_controller.setDynamics(steering_dynamics);
     steering_controller.setSteeringSensitivity(runtime_config.steering_sensitivity);
     steering_controller.setCommandStep(runtime_config.steering_command_step);
 
@@ -129,26 +125,21 @@ int main() {
         updated_motor_dynamics.command_timeout_ms = updated_snapshot.motor_command_timeout_ms;
         motor_controller.setDynamics(updated_motor_dynamics);
 
-        SteeringController::DynamicsConfig updated_steering_dynamics;
-        updated_steering_dynamics.kp = updated_snapshot.steering_pid.kp;
-        updated_steering_dynamics.ki = updated_snapshot.steering_pid.ki;
-        updated_steering_dynamics.kd = updated_snapshot.steering_pid.kd;
-        updated_steering_dynamics.output_limit = updated_snapshot.steering_pid.output_limit;
-        updated_steering_dynamics.control_interval_ms = updated_snapshot.steering_pid.control_interval_ms;
-        steering_controller.setDynamics(updated_steering_dynamics);
         steering_controller.setSteeringSensitivity(updated_snapshot.steering_sensitivity);
         steering_controller.setCommandStep(updated_snapshot.steering_command_step);
         steering_controller.configureAngleLimits(updated_snapshot.steering_center_angle,
                                                  updated_snapshot.steering_left_limit,
                                                  updated_snapshot.steering_right_limit);
+        active_driving_mode.store(updated_snapshot.driving_mode);
         return true;
     };
 
-    WebSocketServer server("0.0.0.0", 8080, dispatcher, config_update_handler);
+    auto driving_mode_provider = [&active_driving_mode]() { return active_driving_mode.load(); };
+    WebSocketServer server("0.0.0.0", 8080, dispatcher, config_update_handler, driving_mode_provider);
     server.start();
 
     std::cout << "Autonomous Car v3 WebSocket server iniciado em ws://0.0.0.0:8080" << std::endl;
-    std::cout << "Canal de comandos: command:<acao> (ex.: command:forward)" << std::endl;
+    std::cout << "Canal de comandos: command:<origem>:<acao> (ex.: command:manual:forward)" << std::endl;
     std::cout << "Canal de configuração: config:<chave>=<valor> (ex.: config:steering.sensitivity=1.2)" << std::endl;
 
     std::signal(SIGINT, handleSignal);

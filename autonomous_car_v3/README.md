@@ -57,21 +57,29 @@ O script cria uma pasta `build/`, executa o `cmake` e, em seguida, compila o pro
 
 O servidor WebSocket será iniciado em `ws://0.0.0.0:8080`. Envie mensagens de texto para os canais abaixo:
 
-- `command:<acao>` – controla o carro. Exemplos:
-  - `command:forward`
-  - `command:backward`
-  - `command:stop`
-  - `command:left`
-  - `command:right`
-  - `command:center`
-  - `command:throttle=75` (valor normalizado: `-100` a `100` ou `-1.0` a `1.0`)
-  - `command:steering=-35` (valor normalizado: `-100` a `100` ou `-1.0` a `1.0`)
+- `command:<origem>:<acao>` – controla o carro e informa a origem do comando. Exemplos:
+  - `command:manual:forward`
+  - `command:manual:left`
+  - `command:manual:center`
+  - `command:manual:throttle=75` (valor normalizado: `-100` a `100` ou `-1.0` a `1.0`)
+  - `command:autonomous:steering=-0.4`
 - `config:<chave>=<valor>` – ajusta parâmetros em tempo de execução (por exemplo `config:motor.command_timeout_ms=200`).
+
+Se a origem não for informada o servidor assume que o comando veio da pilotagem manual. Quando o carro estiver no modo autônomo, comandos manuais são ignorados e vice-versa – isso evita que origens conflitantes disputem o controle.
 
 Comandos discretos de direção (`left`/`right`) deslocam o alvo apenas um incremento por acionamento (`STEERING_COMMAND_STEP`).
 Pressione continuamente para acumular o giro até atingir o limite desejado.
 
 Os comandos podem ser disparados rapidamente em sequência. Os motores funcionam de forma binária (apenas frente, ré ou parado) e interrompem o movimento automaticamente quando novas ordens deixam de chegar por mais tempo que o limite configurado.
+
+### Modos de condução e direção
+
+O veículo pode operar em dois modos:
+
+- **Manual (padrão):** toda a direção é aplicada diretamente conforme os comandos recebidos, utilizando apenas o fator de sensibilidade configurado para limitar o ângulo máximo. Nenhuma correção via PID acontece nesta versão – o módulo foi mantido no código, mas marcado como obsoleto até que o pipeline de correção seja integrado.
+- **Autonomous:** os comandos são aceitos apenas quando enviados com a origem `autonomous`. A interpretação e a suavização seguem exatamente o mesmo fluxo do modo manual; o subsistema de PID continua desativado até que o sistema autônomo passe a enviar correções próprias.
+
+O modo ativo pode ser definido no arquivo `.env` e alterado em tempo de execução pelo canal `config` (`config:driving.mode=manual`).
 
 ### Parâmetros de configuração
 
@@ -80,13 +88,14 @@ Os arquivos `.env` (e o canal `config`) aceitam os parâmetros abaixo para calib
 | Chave | Descrição |
 |-------|-----------|
 | `MOTOR_COMMAND_TIMEOUT_MS` | Tempo máximo (ms) sem novos comandos antes de parar os motores |
-| `STEERING_PID_KP`, `STEERING_PID_KI`, `STEERING_PID_KD` | Ganhos do PID de direção |
-| `STEERING_PID_OUTPUT_LIMIT` | Velocidade máxima de variação do ângulo |
-| `STEERING_PID_INTERVAL_MS` | Intervalo de atualização do PID de direção |
+| `STEERING_SENSITIVITY` | Controla o quão responsiva é a direção (multiplicador aplicado ao comando) |
 | `STEERING_COMMAND_STEP` | Incremento aplicado a cada comando `left`/`right` (0–1) |
 | `STEERING_CENTER_ANGLE` | Define a posição neutra (em graus) aplicada no boot |
 | `STEERING_LEFT_LIMIT_DEGREES`, `STEERING_RIGHT_LIMIT_DEGREES` | Limite (em graus) para cada lado em relação ao centro |
 | `MOTOR_LEFT_INVERTED`, `MOTOR_RIGHT_INVERTED` | Ajustam a polaridade física de cada motor |
+| `DRIVING_MODE` | Define se o carro inicia em `manual` ou `autonomous` |
+
+Os parâmetros `STEERING_PID_*` foram desativados temporariamente. Eles permanecem documentados apenas como referência histórica; sempre que forem informados via arquivo ou WebSocket o sistema irá registrá-los como obsoletos e ignorará os valores.
 
 Os valores padrão vivem em `config/autonomous_car.env` (e em um arquivo `.env` de conveniência na raiz do projeto). Copie-os para outro local ou edite-os diretamente conforme a sua necessidade. Valores podem ser ajustados em tempo real via WebSocket para facilitar a calibração em pista.
 
