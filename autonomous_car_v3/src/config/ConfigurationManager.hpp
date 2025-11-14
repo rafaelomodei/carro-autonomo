@@ -14,14 +14,6 @@ struct MotorPinConfig {
     int backward_right{16};
 };
 
-struct PidConfig {
-    double kp{0.0};
-    double ki{0.0};
-    double kd{0.0};
-    double output_limit{0.0};
-    int control_interval_ms{20};
-};
-
 struct RuntimeConfigSnapshot {
     MotorPinConfig motor_pins;
     int steering_pwm_pin{13};
@@ -33,7 +25,6 @@ struct RuntimeConfigSnapshot {
     bool motor_left_inverted{false};
     bool motor_right_inverted{true};
     int motor_command_timeout_ms{150};
-    PidConfig steering_pid;
     DrivingMode driving_mode{DrivingMode::Manual};
 };
 

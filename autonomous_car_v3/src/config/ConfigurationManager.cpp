@@ -92,7 +92,6 @@ RuntimeConfigSnapshot ConfigurationManager::snapshot() const {
 void ConfigurationManager::loadDefaults() {
     std::lock_guard<std::mutex> lock(mutex_);
     current_ = RuntimeConfigSnapshot{};
-    current_.steering_pid = PidConfig{4.0, 0.8, 0.20, 0.2, 80};
     current_.steering_center_angle = 90;
     current_.steering_left_limit = 20;
     current_.steering_right_limit = 20;
@@ -285,48 +284,12 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
         return true;
     }
 
-    if (iequals(key, "STEERING_PID_KP") || iequals(key, "steering.pid.kp")) {
-        auto parsed = parseDouble(value);
-        if (!parsed) {
-            return false;
-        }
-        current_.steering_pid.kp = *parsed;
-        return true;
-    }
-
-    if (iequals(key, "STEERING_PID_KI") || iequals(key, "steering.pid.ki")) {
-        auto parsed = parseDouble(value);
-        if (!parsed) {
-            return false;
-        }
-        current_.steering_pid.ki = *parsed;
-        return true;
-    }
-
-    if (iequals(key, "STEERING_PID_KD") || iequals(key, "steering.pid.kd")) {
-        auto parsed = parseDouble(value);
-        if (!parsed) {
-            return false;
-        }
-        current_.steering_pid.kd = *parsed;
-        return true;
-    }
-
-    if (iequals(key, "STEERING_PID_OUTPUT_LIMIT") || iequals(key, "steering.pid.output_limit")) {
-        auto parsed = parseDouble(value);
-        if (!parsed || *parsed <= 0.0) {
-            return false;
-        }
-        current_.steering_pid.output_limit = *parsed;
-        return true;
-    }
-
-    if (iequals(key, "STEERING_PID_INTERVAL_MS") || iequals(key, "steering.pid.interval_ms")) {
-        auto parsed = parseInt(value);
-        if (!parsed || *parsed <= 0) {
-            return false;
-        }
-        current_.steering_pid.control_interval_ms = *parsed;
+    if (iequals(key, "STEERING_PID_KP") || iequals(key, "steering.pid.kp") ||
+        iequals(key, "STEERING_PID_KI") || iequals(key, "steering.pid.ki") ||
+        iequals(key, "STEERING_PID_KD") || iequals(key, "steering.pid.kd") ||
+        iequals(key, "STEERING_PID_OUTPUT_LIMIT") || iequals(key, "steering.pid.output_limit") ||
+        iequals(key, "STEERING_PID_INTERVAL_MS") || iequals(key, "steering.pid.interval_ms")) {
+        std::cerr << "Configuração de PID da direção obsoleta ignorada: " << key << std::endl;
         return true;
     }
 
