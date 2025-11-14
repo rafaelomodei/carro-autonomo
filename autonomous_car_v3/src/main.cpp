@@ -106,6 +106,7 @@ int main() {
     steering_controller.setDynamics(steering_dynamics);
     steering_controller.setSteeringSensitivity(runtime_config.steering_sensitivity);
     steering_controller.setCommandStep(runtime_config.steering_command_step);
+    steering_controller.setDrivingMode(runtime_config.driving_mode);
 
     CommandDispatcher dispatcher;
     dispatcher.registerCommand("forward", std::make_unique<ForwardCommand>(motor_controller));
@@ -141,14 +142,16 @@ int main() {
         steering_controller.configureAngleLimits(updated_snapshot.steering_center_angle,
                                                  updated_snapshot.steering_left_limit,
                                                  updated_snapshot.steering_right_limit);
+        steering_controller.setDrivingMode(updated_snapshot.driving_mode);
         return true;
     };
 
-    WebSocketServer server("0.0.0.0", 8080, dispatcher, config_update_handler);
+    auto driving_mode_provider = [&steering_controller]() { return steering_controller.drivingMode(); };
+    WebSocketServer server("0.0.0.0", 8080, dispatcher, config_update_handler, driving_mode_provider);
     server.start();
 
     std::cout << "Autonomous Car v3 WebSocket server iniciado em ws://0.0.0.0:8080" << std::endl;
-    std::cout << "Canal de comandos: command:<acao> (ex.: command:forward)" << std::endl;
+    std::cout << "Canal de comandos: command:<origem>:<acao> (ex.: command:manual:forward)" << std::endl;
     std::cout << "Canal de configuração: config:<chave>=<valor> (ex.: config:steering.sensitivity=1.2)" << std::endl;
 
     std::signal(SIGINT, handleSignal);

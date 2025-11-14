@@ -40,6 +40,7 @@ struct ParsedMessage {
     MessageChannel channel{MessageChannel::Unknown};
     std::string key;
     std::optional<std::string> value;
+    std::optional<std::string> source_token;
 };
 
 std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
@@ -66,12 +67,32 @@ std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
         ParsedMessage parsed;
         parsed.channel = MessageChannel::Command;
         auto equals_pos = remainder.find('=');
+        std::string command_section;
         if (equals_pos == std::string::npos) {
-            parsed.key = remainder;
+            command_section = remainder;
         } else {
-            parsed.key = trim(remainder.substr(0, equals_pos));
+            command_section = trim(remainder.substr(0, equals_pos));
             parsed.value = trim(remainder.substr(equals_pos + 1));
+            if (parsed.value && parsed.value->empty()) {
+                parsed.value = std::nullopt;
+            }
         }
+
+        auto colon_pos = command_section.find(':');
+        if (colon_pos != std::string::npos) {
+            auto possible_source = trim(command_section.substr(0, colon_pos));
+            auto remainder_section = trim(command_section.substr(colon_pos + 1));
+            if (!possible_source.empty() && !remainder_section.empty()) {
+                parsed.source_token = possible_source;
+                command_section = remainder_section;
+            }
+        }
+
+        if (command_section.empty()) {
+            return std::nullopt;
+        }
+
+        parsed.key = command_section;
         return parsed;
     }
 
@@ -400,11 +421,12 @@ void sendCloseFrame(int client_fd) {
 namespace autonomous_car::services {
 
 WebSocketServer::WebSocketServer(const std::string &host, int port, controllers::CommandDispatcher &dispatcher,
-                                 ConfigUpdateHandler config_handler)
+                                 ConfigUpdateHandler config_handler, DrivingModeProvider mode_provider)
     : host_{host},
       port_{port},
       dispatcher_{dispatcher},
       config_handler_{std::move(config_handler)},
+      driving_mode_provider_{std::move(mode_provider)},
       running_{false},
       server_fd_{-1},
       active_client_fd_{-1} {}
@@ -525,6 +547,27 @@ void WebSocketServer::run() {
                     std::cerr << "Valor de comando inválido: " << *parsed_message->value
                               << " para comando " << parsed_message->key << std::endl;
                     continue;
+                }
+
+                CommandSource command_source = CommandSource::Manual;
+                if (parsed_message->source_token) {
+                    auto parsed_source = commandSourceFromString(*parsed_message->source_token);
+                    if (!parsed_source) {
+                        std::cerr << "Origem de comando desconhecida: " << *parsed_message->source_token
+                                  << " para comando " << parsed_message->key << std::endl;
+                        continue;
+                    }
+                    command_source = *parsed_source;
+                }
+
+                if (driving_mode_provider_) {
+                    auto current_mode = driving_mode_provider_();
+                    if (!isSourceCompatible(command_source, current_mode)) {
+                        std::cerr << "Comando " << parsed_message->key
+                                  << " ignorado. Origem " << toString(command_source)
+                                  << " não permitida no modo " << toString(current_mode) << std::endl;
+                        continue;
+                    }
                 }
 
                 bool handled = dispatcher_.dispatch(parsed_message->key, normalized_value);

@@ -5,6 +5,7 @@
 #include <mutex>
 #include <thread>
 
+#include "common/DrivingMode.hpp"
 #include "controllers/PidController.hpp"
 
 namespace autonomous_car::controllers {
@@ -39,10 +40,16 @@ public:
     void setDynamics(const DynamicsConfig &config);
     void configureAngleLimits(const AngleLimitConfig &config);
     void configureAngleLimits(int center_angle, int left_range, int right_range);
+    void setDrivingMode(DrivingMode mode);
+    DrivingMode drivingMode() const;
 
 private:
     void initializePwm();
     void controlLoop();
+    void applyManualSteering(double target, double sensitivity, const AngleLimitState &limits);
+    double applyAutonomousSteering(double target, double current, double dt, double sensitivity,
+                                   const AngleLimitState &limits);
+    double applySensitivity(double normalized_value, double sensitivity) const;
     struct AngleLimitState {
         int center_angle{90};
         int left_range{20};
@@ -77,6 +84,7 @@ private:
     AngleLimitState angle_limits_;
     double target_offset_;
     double current_offset_;
+    std::atomic<DrivingMode> driving_mode_;
 };
 
 } // namespace autonomous_car::controllers

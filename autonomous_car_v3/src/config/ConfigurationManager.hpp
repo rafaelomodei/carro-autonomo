@@ -3,6 +3,8 @@
 #include <mutex>
 #include <string>
 
+#include "common/DrivingMode.hpp"
+
 namespace autonomous_car::config {
 
 struct MotorPinConfig {
@@ -32,6 +34,7 @@ struct RuntimeConfigSnapshot {
     bool motor_right_inverted{true};
     int motor_command_timeout_ms{150};
     PidConfig steering_pid;
+    DrivingMode driving_mode{DrivingMode::Manual};
 };
 
 class ConfigurationManager {

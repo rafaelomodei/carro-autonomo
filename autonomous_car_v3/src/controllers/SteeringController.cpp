@@ -26,7 +26,8 @@ SteeringController::SteeringController(int pwm_pin, int servo_min_angle, int ser
       running_{true},
       control_interval_ms_{80},
       target_offset_{0.0},
-      current_offset_{0.0} {
+      current_offset_{0.0},
+      driving_mode_{DrivingMode::Manual} {
     angle_limits_ = computeAngleState(AngleLimitConfig{});
     initializePwm();
     pid_.setOutputLimits(-0.2, 0.2);
@@ -91,6 +92,22 @@ void SteeringController::setAngle(int angle) {
     setSteering(normalized);
 }
 
+void SteeringController::setDrivingMode(DrivingMode mode) {
+    auto previous = driving_mode_.exchange(mode);
+    if (previous == mode) {
+        return;
+    }
+    pid_.reset();
+    if (mode == DrivingMode::Manual) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        current_offset_ = target_offset_;
+    }
+}
+
+DrivingMode SteeringController::drivingMode() const {
+    return driving_mode_.load();
+}
+
 void SteeringController::setSteeringSensitivity(double sensitivity) {
     if (!std::isfinite(sensitivity) || sensitivity <= 0.0) {
         return;
@@ -148,7 +165,6 @@ void SteeringController::controlLoop() {
 
         double target = 0.0;
         double current = 0.0;
-        double sensitivity = steering_sensitivity_.load();
         AngleLimitState limits;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
@@ -156,14 +172,17 @@ void SteeringController::controlLoop() {
             current = current_offset_;
             limits = angle_limits_;
         }
+        double sensitivity = steering_sensitivity_.load();
+        auto mode = driving_mode_.load();
 
-        double delta = pid_.compute(target, current, dt);
-        double updated = std::clamp(current + delta, kMinNormalizedSteering, kMaxNormalizedSteering);
-        double scaled = std::clamp(updated * sensitivity, kMinNormalizedSteering, kMaxNormalizedSteering);
+        if (mode == DrivingMode::Manual) {
+            applyManualSteering(target, sensitivity, limits);
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            current_offset_ = target;
+            continue;
+        }
 
-        int angle = normalizedToAngle(scaled, limits);
-        applyAngle(angle, limits);
-
+        double updated = applyAutonomousSteering(target, current, dt, sensitivity, limits);
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
             current_offset_ = updated;
@@ -243,6 +262,31 @@ int SteeringController::toPwmValue(int angle) const {
                          static_cast<double>(servo_max_angle_ - servo_min_angle_);
     int range = max_pwm_ - min_pwm_;
     return min_pwm_ + static_cast<int>(proportion * range);
+}
+
+void SteeringController::applyManualSteering(double target, double sensitivity,
+                                             const AngleLimitState &limits) {
+    double scaled = applySensitivity(target, sensitivity);
+    int angle = normalizedToAngle(scaled, limits);
+    applyAngle(angle, limits);
+}
+
+double SteeringController::applyAutonomousSteering(double target, double current, double dt,
+                                                   double sensitivity, const AngleLimitState &limits) {
+    double delta = pid_.compute(target, current, dt);
+    double updated = std::clamp(current + delta, kMinNormalizedSteering, kMaxNormalizedSteering);
+    double scaled = applySensitivity(updated, sensitivity);
+    int angle = normalizedToAngle(scaled, limits);
+    applyAngle(angle, limits);
+    return updated;
+}
+
+double SteeringController::applySensitivity(double normalized_value, double sensitivity) const {
+    if (!std::isfinite(sensitivity) || sensitivity <= 0.0) {
+        sensitivity = 1.0;
+    }
+    double scaled = normalized_value * sensitivity;
+    return std::clamp(scaled, kMinNormalizedSteering, kMaxNormalizedSteering);
 }
 
 } // namespace autonomous_car::controllers

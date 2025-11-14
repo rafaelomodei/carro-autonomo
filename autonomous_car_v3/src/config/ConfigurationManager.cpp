@@ -98,6 +98,7 @@ void ConfigurationManager::loadDefaults() {
     current_.steering_right_limit = 20;
     current_.steering_command_step = 0.1;
     current_.motor_command_timeout_ms = 150;
+    current_.driving_mode = DrivingMode::Manual;
 }
 
 bool ConfigurationManager::loadFromFile(const std::string &path) {
@@ -272,6 +273,15 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
         iequals(key, "MOTOR_MIN_ACTIVE_THROTTLE") ||
         iequals(key, "motor.min_active_throttle")) {
         std::cerr << "Configuração de PID do motor obsoleta ignorada: " << key << std::endl;
+        return true;
+    }
+
+    if (iequals(key, "DRIVING_MODE") || iequals(key, "driving.mode")) {
+        auto parsed = drivingModeFromString(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.driving_mode = *parsed;
         return true;
     }
 
