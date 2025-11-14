@@ -30,8 +30,7 @@ struct RuntimeConfigSnapshot {
     double steering_command_step{0.1};
     bool motor_left_inverted{false};
     bool motor_right_inverted{true};
-    double motor_min_active_throttle{0.2};
-    PidConfig motor_pid;
+    int motor_command_timeout_ms{150};
     PidConfig steering_pid;
 };
 
