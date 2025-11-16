@@ -21,14 +21,14 @@ namespace autonomous_car::services::camera {
  * - LANE_MIN_CONTOUR_AREA: área mínima do contorno considerada como pista (px²).
  */
 struct LaneFilterConfig {
-    double roi_keep_ratio = 0.55;
+    double roi_keep_ratio = 0.5;
     cv::Size gaussian_kernel = cv::Size(5, 5);
-    double gaussian_sigma = 0.0;
+    double gaussian_sigma = 1.2;
     cv::Scalar hsv_low = cv::Scalar(0, 0, 0);
-    cv::Scalar hsv_high = cv::Scalar(180, 80, 130);
-    cv::Size morph_kernel = cv::Size(9, 9);
-    int morph_iterations = 2;
-    double min_contour_area = 500.0;
+    cv::Scalar hsv_high = cv::Scalar(180, 110, 200);
+    cv::Size morph_kernel = cv::Size(5, 5);
+    int morph_iterations = 1;
+    double min_contour_area = 400.0;
 
     static LaneFilterConfig LoadFromEnv();
 };
