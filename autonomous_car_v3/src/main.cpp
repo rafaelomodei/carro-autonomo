@@ -22,6 +22,7 @@
 #include "controllers/CommandDispatcher.hpp"
 #include "controllers/MotorController.hpp"
 #include "controllers/SteeringController.hpp"
+#include "services/CameraService.hpp"
 #include "services/WebSocketServer.hpp"
 
 namespace {
@@ -71,6 +72,7 @@ int main() {
     using autonomous_car::controllers::CommandDispatcher;
     using autonomous_car::controllers::MotorController;
     using autonomous_car::controllers::SteeringController;
+    using autonomous_car::services::CameraService;
     using autonomous_car::services::WebSocketServer;
 
     auto &config_manager = ConfigurationManager::instance();
@@ -136,7 +138,9 @@ int main() {
 
     auto driving_mode_provider = [&active_driving_mode]() { return active_driving_mode.load(); };
     WebSocketServer server("0.0.0.0", 8080, dispatcher, config_update_handler, driving_mode_provider);
+    CameraService camera_service;
     server.start();
+    camera_service.start();
 
     std::cout << "Autonomous Car v3 WebSocket server iniciado em ws://0.0.0.0:8080" << std::endl;
     std::cout << "Canal de comandos: command:<origem>:<acao> (ex.: command:manual:forward)" << std::endl;
@@ -151,6 +155,7 @@ int main() {
 
     std::cout << "Encerrando servidor..." << std::endl;
     server.stop();
+    camera_service.stop();
     motor_controller.stop();
     steering_controller.center();
 
