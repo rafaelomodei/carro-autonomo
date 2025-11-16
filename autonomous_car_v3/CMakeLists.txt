@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS videoio highgui core)
 
 add_executable(${PROJECT_NAME}
     src/main.cpp
@@ -22,12 +23,14 @@ add_executable(${PROJECT_NAME}
     src/commands/throttle/ThrottleCommand.cpp
     src/commands/steering/SteeringCommand.cpp
     src/services/WebSocketServer.cpp
+    src/services/CameraService.cpp
     src/config/ConfigurationManager.cpp
 )
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         src
+        ${OpenCV_INCLUDE_DIRS}
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -35,4 +38,5 @@ target_link_libraries(${PROJECT_NAME}
         wiringPi
         Threads::Threads
         atomic
+        ${OpenCV_LIBS}
 )
