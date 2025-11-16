@@ -5,8 +5,10 @@
 namespace autonomous_car::services::camera::filters {
 
 /**
- * @brief Mantém apenas a região inferior do frame, preenchendo o restante com
- * zeros para preservar o tamanho original da imagem.
+ * @brief Recorta o trecho inferior do frame para focar na área onde a pista aparece.
+ *
+ * Esse filtro reduz ruído visual vindo do horizonte. O percentual preservado pode ser
+ * controlado via `LANE_ROI_KEEP_RATIO`.
  */
 class BottomMaskFilter : public FrameFilter {
   public:

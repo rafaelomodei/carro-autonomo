@@ -6,6 +6,7 @@
 #include <opencv2/core.hpp>
 
 #include "services/camera/LaneDetectionResult.hpp"
+#include "services/camera/LaneFilterConfig.hpp"
 #include "services/camera/filters/FrameFilter.hpp"
 
 namespace autonomous_car::services::camera {
@@ -13,6 +14,7 @@ namespace autonomous_car::services::camera {
 class LaneDetector {
   public:
     LaneDetector();
+    explicit LaneDetector(LaneFilterConfig config);
 
     LaneDetectionResult detect(const cv::Mat &frame) const;
 
@@ -20,6 +22,7 @@ class LaneDetector {
     LaneDetectionResult analyzeMask(const cv::Mat &mask,
                                     const cv::Size &frame_size) const;
 
+    LaneFilterConfig config_;
     std::vector<std::unique_ptr<filters::FrameFilter>> filters_;
 };
 

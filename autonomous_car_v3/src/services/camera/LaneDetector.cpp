@@ -1,6 +1,7 @@
 #include "services/camera/LaneDetector.hpp"
 
 #include <algorithm>
+#include <utility>
 
 #include <opencv2/imgproc.hpp>
 
@@ -11,18 +12,23 @@
 
 namespace autonomous_car::services::camera {
 namespace {
-constexpr double kRoiKeepRatio = 0.55; // concentra no trecho próximo ao carro
-constexpr double kMinContourArea = 500.0;
+std::vector<std::unique_ptr<filters::FrameFilter>> BuildFilters(const LaneFilterConfig &config) {
+    std::vector<std::unique_ptr<filters::FrameFilter>> filters;
+    filters.push_back(std::make_unique<filters::BottomMaskFilter>(config.roi_keep_ratio));
+    filters.push_back(
+        std::make_unique<filters::GaussianBlurFilter>(config.gaussian_kernel, config.gaussian_sigma));
+    filters.push_back(
+        std::make_unique<filters::DarkRegionMaskFilter>(config.hsv_low, config.hsv_high));
+    filters.push_back(std::make_unique<filters::MorphologyFilter>(cv::MORPH_CLOSE, config.morph_kernel,
+                                                                 config.morph_iterations));
+    return filters;
+}
 }
 
-LaneDetector::LaneDetector() {
-    filters_.push_back(std::make_unique<filters::BottomMaskFilter>(kRoiKeepRatio));
-    filters_.push_back(std::make_unique<filters::GaussianBlurFilter>(cv::Size(5, 5), 0));
-    filters_.push_back(std::make_unique<filters::DarkRegionMaskFilter>(
-        cv::Scalar(0, 0, 0), cv::Scalar(180, 80, 130)));
-    filters_.push_back(std::make_unique<filters::MorphologyFilter>(cv::MORPH_CLOSE,
-                                                                   cv::Size(9, 9), 2));
-}
+LaneDetector::LaneDetector() : LaneDetector(LaneFilterConfig::LoadFromEnv()) {}
+
+LaneDetector::LaneDetector(LaneFilterConfig config)
+    : config_(std::move(config)), filters_(BuildFilters(config_)) {}
 
 LaneDetectionResult LaneDetector::detect(const cv::Mat &frame) const {
     LaneDetectionResult result;
@@ -74,7 +80,7 @@ LaneDetectionResult LaneDetector::analyzeMask(const cv::Mat &mask,
         contours.begin(), contours.end(),
         [](const auto &lhs, const auto &rhs) { return cv::contourArea(lhs) < cv::contourArea(rhs); });
     const auto &largest_contour = *largest_it;
-    if (cv::contourArea(largest_contour) < kMinContourArea) {
+    if (cv::contourArea(largest_contour) < config_.min_contour_area) {
         return result;
     }
 
