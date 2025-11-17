@@ -116,7 +116,16 @@ int ReadInt(const char *name, int fallback, int min_value, int max_value) {
 
 LaneFilterConfig LaneFilterConfig::LoadFromEnv() {
     LaneFilterConfig config;
-    config.roi_keep_ratio = ReadClampedDouble("LANE_ROI_KEEP_RATIO", config.roi_keep_ratio, 0.0, 1.0);
+    config.roi_band_start_ratio =
+        ReadClampedDouble("LANE_ROI_BAND_START", config.roi_band_start_ratio, 0.0, 1.0);
+    config.roi_band_end_ratio =
+        ReadClampedDouble("LANE_ROI_BAND_END", config.roi_band_end_ratio, 0.0, 1.0);
+    if (config.roi_band_end_ratio <= config.roi_band_start_ratio) {
+        config.roi_band_end_ratio = std::min(1.0, config.roi_band_start_ratio + 0.05);
+        if (config.roi_band_end_ratio <= config.roi_band_start_ratio) {
+            config.roi_band_start_ratio = std::max(0.0, config.roi_band_end_ratio - 0.05);
+        }
+    }
     config.gaussian_kernel = ReadKernelSize("LANE_GAUSSIAN_KERNEL", config.gaussian_kernel);
     config.gaussian_sigma = ReadClampedDouble("LANE_GAUSSIAN_SIGMA", config.gaussian_sigma, 0.0, 50.0);
     config.hsv_low = ReadScalar("LANE_HSV_LOW", config.hsv_low);

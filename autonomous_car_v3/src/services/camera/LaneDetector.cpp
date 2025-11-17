@@ -5,16 +5,17 @@
 
 #include <opencv2/imgproc.hpp>
 
-#include "services/camera/filters/BottomMaskFilter.hpp"
 #include "services/camera/filters/DarkRegionMaskFilter.hpp"
 #include "services/camera/filters/GaussianBlurFilter.hpp"
+#include "services/camera/filters/RoiBandFilter.hpp"
 #include "services/camera/filters/MorphologyFilter.hpp"
 
 namespace autonomous_car::services::camera {
 namespace {
 std::vector<std::unique_ptr<filters::FrameFilter>> BuildFilters(const LaneFilterConfig &config) {
     std::vector<std::unique_ptr<filters::FrameFilter>> filters;
-    filters.push_back(std::make_unique<filters::BottomMaskFilter>(config.roi_keep_ratio));
+    filters.push_back(
+        std::make_unique<filters::RoiBandFilter>(config.roi_band_start_ratio, config.roi_band_end_ratio));
     filters.push_back(
         std::make_unique<filters::GaussianBlurFilter>(config.gaussian_kernel, config.gaussian_sigma));
     filters.push_back(

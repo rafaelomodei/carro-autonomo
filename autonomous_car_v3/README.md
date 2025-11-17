@@ -107,7 +107,7 @@ O processamento do vídeo usa variáveis de ambiente (ou entradas no `.env`) par
 
 | Variável | Efeito |
 |----------|--------|
-| `LANE_ROI_KEEP_RATIO` | Percentual do frame (0–1) preservado pelo recorte inferior. Diminuir remove ruídos do horizonte, aumentar mostra mais pista distante. |
+| `LANE_ROI_BAND_START` / `LANE_ROI_BAND_END` | Definem a faixa vertical (0 = topo, 1 = base) analisada pelo detector. Ajuste para focar exatamente na região em que o EVA aparece. |
 | `LANE_GAUSSIAN_KERNEL` / `LANE_GAUSSIAN_SIGMA` | Controlam o blur gaussiano que suaviza ruídos. Kernels maiores e sigma alto deixam a máscara uniforme, mas borram detalhes. |
 | `LANE_HSV_LOW` / `LANE_HSV_HIGH` | Limites HSV usados para isolar o EVA preto. Ajuste para adaptar-se à iluminação do ambiente. |
 | `LANE_MORPH_KERNEL` | Tamanho do kernel usado na operação morfológica _close_, responsável por preencher falhas na faixa detectada. |
