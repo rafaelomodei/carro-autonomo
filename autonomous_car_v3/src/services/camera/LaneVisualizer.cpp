@@ -27,10 +27,15 @@ void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &
         return;
     }
 
-    cv::line(frame, result.left_boundary,
-             {result.left_boundary.x, 0}, kLeftColor, 2, cv::LINE_AA);
-    cv::line(frame, result.right_boundary,
-             {result.right_boundary.x, 0}, kRightColor, 2, cv::LINE_AA);
+    const auto drawBoundary = [&](const LaneBoundarySegment &boundary, const cv::Scalar &color) {
+        if (!boundary.valid) {
+            return;
+        }
+        cv::line(frame, boundary.top, boundary.bottom, color, 2, cv::LINE_AA);
+    };
+
+    drawBoundary(result.left_boundary, kLeftColor);
+    drawBoundary(result.right_boundary, kRightColor);
 
     cv::circle(frame, result.lane_center, 6, kCenterColor, cv::FILLED);
     cv::line(frame, result.frame_center, result.lane_center, kCenterColor, 2, cv::LINE_AA);

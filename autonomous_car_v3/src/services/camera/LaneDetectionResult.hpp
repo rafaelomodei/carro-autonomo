@@ -4,10 +4,16 @@
 
 namespace autonomous_car::services::camera {
 
+struct LaneBoundarySegment {
+    cv::Point top;
+    cv::Point bottom;
+    bool valid{false};
+};
+
 struct LaneDetectionResult {
     bool lane_found{false};
-    cv::Point left_boundary;
-    cv::Point right_boundary;
+    LaneBoundarySegment left_boundary;
+    LaneBoundarySegment right_boundary;
     cv::Point lane_center;
     cv::Point frame_center;
     double lateral_offset_px{0.0};
