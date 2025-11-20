@@ -8,10 +8,17 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/videoio.hpp>
 
+#include "services/camera/LaneDetector.hpp"
+#include "services/camera/LaneVisualizer.hpp"
+
 namespace autonomous_car::services {
 
 CameraService::CameraService(int camera_index, std::string window_name)
-    : camera_index_(camera_index), window_name_(std::move(window_name)) {}
+    : camera_index_(camera_index),
+      window_name_(std::move(window_name)),
+      processed_window_name_(window_name_ + " - Processado"),
+      lane_detector_(std::make_unique<camera::LaneDetector>()),
+      lane_visualizer_(std::make_unique<camera::LaneVisualizer>()) {}
 
 CameraService::~CameraService() { stop(); }
 
@@ -44,6 +51,7 @@ void CameraService::run() {
 
         running_.store(true);
         cv::namedWindow(window_name_, cv::WINDOW_AUTOSIZE);
+        cv::namedWindow(processed_window_name_, cv::WINDOW_AUTOSIZE);
 
         while (!stop_requested_.load()) {
             cv::Mat frame;
@@ -56,7 +64,20 @@ void CameraService::run() {
                 continue;
             }
 
+            camera::LaneDetectionResult detection_result;
+            if (lane_detector_) {
+                detection_result = lane_detector_->detect(frame);
+            }
+
+            cv::Mat processed_view;
+            if (lane_visualizer_) {
+                processed_view = lane_visualizer_->buildDebugView(frame, detection_result);
+            }
+
             cv::imshow(window_name_, frame);
+            if (!processed_view.empty()) {
+                cv::imshow(processed_window_name_, processed_view);
+            }
             // waitKey permite ao HighGUI atualizar a janela; 1ms evita bloquear o loop.
             if (cv::waitKey(1) == 27) { // tecla ESC
                 std::cout << "[CameraService] Tecla ESC detectada. Encerrando captura." << std::endl;
@@ -65,13 +86,22 @@ void CameraService::run() {
         }
 
         capture.release();
-        cv::destroyWindow(window_name_);
+        destroyWindows();
     } catch (const std::exception &ex) {
         std::cerr << "[CameraService] Exceção ao executar serviço de câmera: " << ex.what()
                   << std::endl;
     }
 
     running_.store(false);
+}
+
+void CameraService::destroyWindows() const {
+    if (!window_name_.empty()) {
+        cv::destroyWindow(window_name_);
+    }
+    if (!processed_window_name_.empty()) {
+        cv::destroyWindow(processed_window_name_);
+    }
 }
 
 } // namespace autonomous_car::services

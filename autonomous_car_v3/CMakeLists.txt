@@ -24,6 +24,13 @@ add_executable(${PROJECT_NAME}
     src/commands/steering/SteeringCommand.cpp
     src/services/WebSocketServer.cpp
     src/services/CameraService.cpp
+    src/services/camera/LaneDetector.cpp
+    src/services/camera/LaneFilterConfig.cpp
+    src/services/camera/LaneVisualizer.cpp
+    src/services/camera/filters/RoiBandFilter.cpp
+    src/services/camera/filters/DarkRegionMaskFilter.cpp
+    src/services/camera/filters/GaussianBlurFilter.cpp
+    src/services/camera/filters/MorphologyFilter.cpp
     src/config/ConfigurationManager.cpp
 )
 

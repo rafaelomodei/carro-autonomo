@@ -101,6 +101,21 @@ Os valores padrão vivem em `config/autonomous_car.env` (e em um arquivo `.env` 
 
 > **Dica:** os limites de direção vêm configurados para manter o servo entre 70° e 110° (centro em 90°). Ajuste `STEERING_LEFT_LIMIT_DEGREES` e `STEERING_RIGHT_LIMIT_DEGREES` caso a montagem permita um curso diferente em cada lado.
 
+### Calibração da visão (pipeline de pista)
+
+O processamento do vídeo usa variáveis de ambiente (ou entradas no `.env`) para ajustar cada filtro do `LaneDetector` sem recompilar o projeto:
+
+| Variável | Efeito |
+|----------|--------|
+| `LANE_ROI_BAND_START` / `LANE_ROI_BAND_END` | Definem a faixa vertical (0 = topo, 1 = base) analisada pelo detector. Ajuste para focar exatamente na região em que o EVA aparece. |
+| `LANE_GAUSSIAN_KERNEL` / `LANE_GAUSSIAN_SIGMA` | Controlam o blur gaussiano que suaviza ruídos. Kernels maiores e sigma alto deixam a máscara uniforme, mas borram detalhes. |
+| `LANE_HSV_LOW` / `LANE_HSV_HIGH` | Limites HSV usados para isolar o EVA preto. Ajuste para adaptar-se à iluminação do ambiente. |
+| `LANE_MORPH_KERNEL` | Tamanho do kernel usado na operação morfológica _close_, responsável por preencher falhas na faixa detectada. |
+| `LANE_MORPH_ITERATIONS` | Número de repetições do _close_. Mais iterações juntam regiões próximas, porém podem engolir ruídos. |
+| `LANE_MIN_CONTOUR_AREA` | Área mínima (em px²) para considerar um contorno como pista válida, evitando falsos positivos pequenos. |
+
+Após definir as variáveis (por exemplo exportando antes de rodar `start.sh`), reinicie o serviço para que os novos parâmetros sejam aplicados.
+
 ## Próximos passos sugeridos
 
 - Integrar sensores de feedback (encoders, IMU) para fechar o loop de velocidade real
