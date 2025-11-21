@@ -5,6 +5,8 @@
 #include <string>
 #include <thread>
 
+#include <opencv2/videoio.hpp>
+
 namespace cv {
 class VideoCapture;
 }
@@ -41,6 +43,8 @@ class CameraService {
     std::string processed_window_name_;
     std::unique_ptr<camera::LaneDetector> lane_detector_;
     std::unique_ptr<camera::LaneVisualizer> lane_visualizer_;
+    cv::VideoWriter raw_video_writer_;
+    cv::VideoWriter processed_video_writer_;
 };
 
 } // namespace autonomous_car::services
