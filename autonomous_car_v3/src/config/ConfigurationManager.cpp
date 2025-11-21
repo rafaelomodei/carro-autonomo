@@ -76,7 +76,7 @@ std::optional<bool> parseBool(const std::string &value) {
 }
 
 bool applyLaneSettingToEnv(const std::string &key, const std::string &value) {
-    if (!key.starts_with("LANE_")) {
+    if (key.rfind("LANE_", 0) != 0) {
         return false;
     }
 
