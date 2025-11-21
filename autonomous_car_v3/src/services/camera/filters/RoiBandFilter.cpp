@@ -14,7 +14,7 @@ RoiBandFilter::RoiBandFilter(double start_ratio, double end_ratio)
       end_ratio_(ClampRatio(std::max(start_ratio, end_ratio))) {}
 
 cv::Mat RoiBandFilter::apply(const cv::Mat &frame) const {
-    if (frame.empty()) {
+    if (frame.empty() || frame.rows <= 0 || frame.cols <= 0) {
         return cv::Mat();
     }
 

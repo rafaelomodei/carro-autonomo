@@ -128,7 +128,7 @@ LaneDetector::LaneDetector(LaneFilterConfig config)
 
 LaneDetectionResult LaneDetector::detect(const cv::Mat &frame) const {
     LaneDetectionResult result;
-    if (frame.empty()) {
+    if (frame.empty() || frame.rows <= 0 || frame.cols <= 0) {
         return result;
     }
 
