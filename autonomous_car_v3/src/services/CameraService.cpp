@@ -43,7 +43,7 @@ bool CameraService::isRunning() const noexcept { return running_.load(); }
 void CameraService::run() {
     try {
         cv::VideoCapture capture;
-        if (!capture.open(camera_index_)) {
+        if (!capture.open(camera_index_) || !capture.isOpened()) {
             std::cerr << "[CameraService] Aviso: não foi possível inicializar a câmera (índice "
                       << camera_index_ << ")." << std::endl;
             return;
@@ -60,8 +60,9 @@ void CameraService::run() {
                 break;
             }
 
-            if (frame.empty()) {
-                continue;
+            if (frame.empty() || frame.rows <= 0 || frame.cols <= 0) {
+                std::cerr << "[CameraService] Frame inválido recebido da câmera." << std::endl;
+                break;
             }
 
             camera::LaneDetectionResult detection_result;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <utility>
 
 #include <opencv2/imgproc.hpp>
@@ -127,7 +128,7 @@ LaneDetector::LaneDetector(LaneFilterConfig config)
 
 LaneDetectionResult LaneDetector::detect(const cv::Mat &frame) const {
     LaneDetectionResult result;
-    if (frame.empty()) {
+    if (frame.empty() || frame.rows <= 0 || frame.cols <= 0) {
         return result;
     }
 
@@ -136,17 +137,7 @@ LaneDetectionResult LaneDetector::detect(const cv::Mat &frame) const {
         processed = filter->apply(processed);
     }
 
-    if (processed.empty()) {
-        return result;
-    }
-
-    result.processed_frame = processed;
-    result.frame_center = cv::Point(frame.cols / 2, frame.rows - 1);
-
-    LaneDetectionResult analysis = analyzeMask(processed, frame.size());
-    analysis.processed_frame = result.processed_frame;
-    analysis.frame_center = result.frame_center;
-    return analysis;
+    return analyzeMask(processed, frame.size());
 }
 
 LaneDetectionResult LaneDetector::analyzeMask(const cv::Mat &mask,
@@ -165,8 +156,111 @@ LaneDetectionResult LaneDetector::analyzeMask(const cv::Mat &mask,
         single_channel = mask;
     }
 
+    const int total_rows = single_channel.rows;
+    int roi_start = std::clamp(static_cast<int>(std::round(total_rows * config_.roi_band_start_ratio)), 0,
+                               total_rows);
+    int roi_end = std::clamp(static_cast<int>(std::round(total_rows * config_.roi_band_end_ratio)), 0,
+                             total_rows);
+    if (roi_end <= roi_start) {
+        roi_start = 0;
+        roi_end = total_rows;
+    }
+    cv::Mat band_mask = cv::Mat::zeros(single_channel.size(), single_channel.type());
+    band_mask(cv::Range(roi_start, roi_end), cv::Range::all()).setTo(255);
+
+    cv::Mat inverted_mask;
+    cv::bitwise_not(single_channel, inverted_mask);
+    cv::bitwise_and(inverted_mask, band_mask, inverted_mask);
+
+    const cv::Mat morph_kernel =
+        cv::getStructuringElement(cv::MORPH_RECT, config_.morph_kernel);
+    cv::Mat cleaned_sides;
+    cv::morphologyEx(inverted_mask, cleaned_sides, cv::MORPH_CLOSE, morph_kernel,
+                     {-1, -1}, config_.morph_iterations);
+
+    std::vector<std::vector<cv::Point>> side_contours;
+    cv::findContours(cleaned_sides, side_contours, cv::RETR_EXTERNAL,
+                     cv::CHAIN_APPROX_SIMPLE);
+
+    auto is_large_enough = [&](const std::vector<cv::Point> &contour) {
+        return cv::contourArea(contour) >= config_.min_contour_area;
+    };
+
+    std::vector<std::vector<cv::Point>> filtered_sides;
+    std::copy_if(side_contours.begin(), side_contours.end(),
+                 std::back_inserter(filtered_sides), is_large_enough);
+
+    std::sort(filtered_sides.begin(), filtered_sides.end(), [](const auto &lhs, const auto &rhs) {
+        return cv::contourArea(lhs) > cv::contourArea(rhs);
+    });
+
+    const auto compute_centroid = [](const std::vector<cv::Point> &contour) {
+        cv::Moments m = cv::moments(contour);
+        if (m.m00 == 0.0) {
+            return cv::Point2f(0.0F, 0.0F);
+        }
+        return cv::Point2f(static_cast<float>(m.m10 / m.m00),
+                           static_cast<float>(m.m01 / m.m00));
+    };
+
+    std::vector<cv::Point> left_side;
+    std::vector<cv::Point> right_side;
+    const int center_x = result.frame_center.x;
+    if (!filtered_sides.empty()) {
+        const auto &first = filtered_sides[0];
+        const bool has_second = filtered_sides.size() > 1;
+        const auto &second = has_second ? filtered_sides[1] : filtered_sides[0];
+
+        cv::Point2f first_centroid = compute_centroid(first);
+        cv::Point2f second_centroid = compute_centroid(second);
+
+        if (has_second && first_centroid.x > second_centroid.x) {
+            left_side = second;
+            right_side = first;
+        } else {
+            left_side = first;
+            right_side = second;
+        }
+
+        if (!has_second) {
+            if (first_centroid.x < center_x) {
+                left_side = first;
+                right_side.clear();
+            } else {
+                right_side = first;
+                left_side.clear();
+            }
+        }
+    }
+
+    cv::Mat left_mask = cv::Mat::zeros(single_channel.size(), single_channel.type());
+    cv::Mat right_mask = cv::Mat::zeros(single_channel.size(), single_channel.type());
+    if (!left_side.empty()) {
+        cv::drawContours(left_mask, {left_side}, -1, cv::Scalar(255), cv::FILLED);
+        result.left_boundary = FitBoundarySegment(left_side, single_channel.cols);
+    }
+    if (!right_side.empty()) {
+        cv::drawContours(right_mask, {right_side}, -1, cv::Scalar(255), cv::FILLED);
+        result.right_boundary = FitBoundarySegment(right_side, single_channel.cols);
+    }
+
+    cv::Mat road_mask;
+    cv::bitwise_not(left_mask | right_mask, road_mask);
+    if (road_mask.empty()) {
+        road_mask = single_channel.clone();
+    }
+
+    cv::bitwise_and(road_mask, band_mask, road_mask);
+
+    cv::morphologyEx(road_mask, road_mask, cv::MORPH_CLOSE, morph_kernel, {-1, -1},
+                     config_.morph_iterations);
+    result.left_mask = left_mask;
+    result.right_mask = right_mask;
+    result.road_mask = road_mask;
+    result.processed_frame = road_mask;
+
     std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(single_channel, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(road_mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     if (contours.empty()) {
         return result;
     }
@@ -209,18 +303,22 @@ LaneDetectionResult LaneDetector::analyzeMask(const cv::Mat &mask,
         result.lane_center = cv::Point(result.frame_center.x, bottom_row - band_height / 2);
     }
 
-    const auto samples = CollectBoundarySamples(single_channel, bounds, result.lane_center.x);
-    result.left_boundary = FitBoundarySegment(samples.left, single_channel.cols);
-    if (!result.left_boundary.valid && fallback_left_x < single_channel.cols) {
+    const auto samples = CollectBoundarySamples(road_mask, bounds, result.lane_center.x);
+    if (!result.left_boundary.valid) {
+        result.left_boundary = FitBoundarySegment(samples.left, road_mask.cols);
+    }
+    if (!result.left_boundary.valid && fallback_left_x < road_mask.cols) {
         result.left_boundary = BuildVerticalFallback(fallback_left_x, band_start, bottom_row,
-                                                     single_channel.cols);
+                                                     road_mask.cols);
     }
 
-    result.right_boundary = FitBoundarySegment(samples.right, single_channel.cols);
+    if (!result.right_boundary.valid) {
+        result.right_boundary = FitBoundarySegment(samples.right, road_mask.cols);
+    }
     if (!result.right_boundary.valid && fallback_right_x >= 0 &&
-        fallback_right_x < single_channel.cols) {
+        fallback_right_x < road_mask.cols) {
         result.right_boundary = BuildVerticalFallback(fallback_right_x, band_start, bottom_row,
-                                                      single_channel.cols);
+                                                      road_mask.cols);
     }
 
     result.lane_found = result.left_boundary.valid && result.right_boundary.valid;
