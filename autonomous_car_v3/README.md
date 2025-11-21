@@ -114,7 +114,7 @@ O processamento do vídeo usa variáveis de ambiente (ou entradas no `.env`) par
 | `LANE_MORPH_ITERATIONS` | Número de repetições do _close_. Mais iterações juntam regiões próximas, porém podem engolir ruídos. |
 | `LANE_MIN_CONTOUR_AREA` | Área mínima (em px²) para considerar um contorno como pista válida, evitando falsos positivos pequenos. |
 
-Após definir as variáveis (por exemplo exportando antes de rodar `start.sh`), reinicie o serviço para que os novos parâmetros sejam aplicados.
+Ao carregar `config/autonomous_car.env`, todas as chaves `LANE_*` são aplicadas ao ambiente automaticamente para alimentar o `LaneDetector` — sem emitir avisos de chave desconhecida. Valores exportados manualmente (ou ajustados via WebSocket) também são respeitados. Reinicie o serviço sempre que alterar o `.env`.
 
 ## Próximos passos sugeridos
 

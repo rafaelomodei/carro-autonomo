@@ -254,6 +254,9 @@ LaneDetectionResult LaneDetector::analyzeMask(const cv::Mat &mask,
 
     cv::morphologyEx(road_mask, road_mask, cv::MORPH_CLOSE, morph_kernel, {-1, -1},
                      config_.morph_iterations);
+    result.left_mask = left_mask;
+    result.right_mask = right_mask;
+    result.road_mask = road_mask;
     result.processed_frame = road_mask;
 
     std::vector<std::vector<cv::Point>> contours;

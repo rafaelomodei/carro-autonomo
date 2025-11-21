@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <string>
 
 namespace {
 
@@ -71,6 +73,19 @@ std::optional<bool> parseBool(const std::string &value) {
         return false;
     }
     return std::nullopt;
+}
+
+bool applyLaneSettingToEnv(const std::string &key, const std::string &value) {
+    if (!key.starts_with("LANE_")) {
+        return false;
+    }
+
+    if (setenv(key.c_str(), value.c_str(), 1) != 0) {
+        std::cerr << "Falha ao aplicar configuração de visão: " << key << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace
@@ -290,6 +305,10 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
         iequals(key, "STEERING_PID_OUTPUT_LIMIT") || iequals(key, "steering.pid.output_limit") ||
         iequals(key, "STEERING_PID_INTERVAL_MS") || iequals(key, "steering.pid.interval_ms")) {
         std::cerr << "Configuração de PID da direção obsoleta ignorada: " << key << std::endl;
+        return true;
+    }
+
+    if (applyLaneSettingToEnv(key, value)) {
         return true;
     }
 

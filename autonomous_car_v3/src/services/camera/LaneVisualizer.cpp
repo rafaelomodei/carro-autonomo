@@ -11,6 +11,15 @@ const cv::Scalar kLeftColor{255, 215, 0};
 const cv::Scalar kRightColor{0, 215, 255};
 const cv::Scalar kCenterColor{0, 255, 0};
 const cv::Scalar kFrameCenterColor{255, 255, 255};
+const cv::Scalar kRoadColor{0, 0, 255};
+
+void paintMask(cv::Mat &target, const cv::Mat &mask, const cv::Scalar &color) {
+    if (target.empty() || mask.empty()) {
+        return;
+    }
+    cv::Mat colored(target.size(), target.type(), color);
+    colored.copyTo(target, mask);
+}
 }
 
 void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &result) const {
@@ -54,21 +63,19 @@ cv::Mat LaneVisualizer::buildDebugView(const cv::Mat &frame, const LaneDetection
     }
 
     cv::Mat overlay = frame.clone();
+    paintMask(overlay, result.road_mask, kRoadColor);
+    paintMask(overlay, result.left_mask, kLeftColor);
+    paintMask(overlay, result.right_mask, kRightColor);
+    cv::addWeighted(overlay, 0.45, frame, 0.55, 0.0, overlay);
     drawLaneOverlay(overlay, result);
 
-    cv::Mat mask_view;
-    if (!result.processed_frame.empty()) {
-        if (result.processed_frame.channels() == 1) {
-            cv::cvtColor(result.processed_frame, mask_view, cv::COLOR_GRAY2BGR);
-        } else {
-            mask_view = result.processed_frame.clone();
-        }
-    } else {
-        mask_view = cv::Mat::zeros(frame.size(), frame.type());
-    }
+    cv::Mat mask_view = cv::Mat::zeros(frame.size(), frame.type());
+    paintMask(mask_view, result.road_mask, kRoadColor);
+    paintMask(mask_view, result.left_mask, kLeftColor);
+    paintMask(mask_view, result.right_mask, kRightColor);
 
-    cv::putText(mask_view, "Mascara (HSV + filtros)", {20, 40}, cv::FONT_HERSHEY_SIMPLEX,
-                0.8, {255, 255, 255}, 2);
+    cv::putText(mask_view, "Segmentacao de pista", {20, 40}, cv::FONT_HERSHEY_SIMPLEX, 0.8,
+                {255, 255, 255}, 2);
 
     cv::Mat mask_resized;
     cv::resize(mask_view, mask_resized, overlay.size());
