@@ -1,5 +1,7 @@
 #include "services/camera/LaneVisualizer.hpp"
 
+#include <algorithm>
+#include <array>
 #include <iomanip>
 #include <sstream>
 #include <vector>
@@ -108,13 +110,32 @@ cv::Mat LaneVisualizer::buildColoredMask(const cv::Mat &binary_mask) const {
         return cv::Mat();
     }
 
-    std::vector<cv::Vec3b> colors(static_cast<size_t>(components));
-    colors[0] = {0, 0, 0};
+    struct ComponentInfo {
+        int label;
+        double centroid_x;
+    };
 
-    for (int i = 1; i < components; ++i) {
-        const unsigned seed = static_cast<unsigned>(i * 73856093u) ^ 0x5bd1e995u;
-        colors[static_cast<size_t>(i)] =
-            cv::Vec3b(seed & 0xFFu, (seed >> 8u) & 0xFFu, (seed >> 16u) & 0xFFu);
+    std::vector<ComponentInfo> components_info;
+    components_info.reserve(static_cast<size_t>(components - 1));
+    for (int label = 1; label < components; ++label) {
+        components_info.push_back({label, centroids.at<double>(label, 0)});
+    }
+
+    std::sort(components_info.begin(), components_info.end(),
+              [](const ComponentInfo &lhs, const ComponentInfo &rhs) {
+                  return lhs.centroid_x < rhs.centroid_x;
+              });
+
+    constexpr std::array<cv::Vec3b, 3> kComponentColors = {
+        cv::Vec3b{255, 0, 0},   // Left - Blue (BGR)
+        cv::Vec3b{0, 255, 0},   // Middle - Green
+        cv::Vec3b{0, 0, 255},   // Right - Red
+    };
+
+    std::vector<cv::Vec3b> colors(static_cast<size_t>(components), cv::Vec3b{0, 0, 0});
+    const size_t color_count = std::min(components_info.size(), kComponentColors.size());
+    for (size_t index = 0; index < color_count; ++index) {
+        colors[static_cast<size_t>(components_info[index].label)] = kComponentColors[index];
     }
 
     cv::Mat colored(binary_mask.size(), CV_8UC3);
