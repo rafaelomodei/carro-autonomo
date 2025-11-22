@@ -14,6 +14,11 @@ const cv::Scalar kLeftColor{255, 215, 0};
 const cv::Scalar kRightColor{0, 215, 255};
 const cv::Scalar kCenterColor{0, 255, 0};
 const cv::Scalar kFrameCenterColor{255, 255, 255};
+const std::array<cv::Vec3b, 3> kComponentColors = {
+    cv::Vec3b{255, 0, 0},   // Left - Blue (BGR)
+    cv::Vec3b{0, 255, 0},   // Middle - Green
+    cv::Vec3b{0, 0, 255},   // Right - Red
+};
 }
 
 void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &result) const {
@@ -125,12 +130,6 @@ cv::Mat LaneVisualizer::buildColoredMask(const cv::Mat &binary_mask) const {
               [](const ComponentInfo &lhs, const ComponentInfo &rhs) {
                   return lhs.centroid_x < rhs.centroid_x;
               });
-
-    constexpr std::array<cv::Vec3b, 3> kComponentColors = {
-        cv::Vec3b{255, 0, 0},   // Left - Blue (BGR)
-        cv::Vec3b{0, 255, 0},   // Middle - Green
-        cv::Vec3b{0, 0, 255},   // Right - Red
-    };
 
     std::vector<cv::Vec3b> colors(static_cast<size_t>(components), cv::Vec3b{0, 0, 0});
     const size_t color_count = std::min(components_info.size(), kComponentColors.size());
