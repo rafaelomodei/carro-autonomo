@@ -2,6 +2,7 @@
 
 #include <iomanip>
 #include <sstream>
+#include <vector>
 
 #include <opencv2/imgproc.hpp>
 
@@ -53,19 +54,14 @@ cv::Mat LaneVisualizer::buildDebugView(const cv::Mat &frame, const LaneDetection
         return frame;
     }
 
-    cv::Mat overlay = frame.clone();
+    cv::Mat binary_mask = toBinaryMask(result.processed_frame);
+    cv::Mat colored_mask = buildColoredMask(binary_mask);
+
+    cv::Mat overlay = applyMaskOverlay(frame, colored_mask, binary_mask);
     drawLaneOverlay(overlay, result);
 
-    cv::Mat mask_view;
-    if (!result.processed_frame.empty()) {
-        if (result.processed_frame.channels() == 1) {
-            cv::cvtColor(result.processed_frame, mask_view, cv::COLOR_GRAY2BGR);
-        } else {
-            mask_view = result.processed_frame.clone();
-        }
-    } else {
-        mask_view = cv::Mat::zeros(frame.size(), frame.type());
-    }
+    cv::Mat mask_view = colored_mask.empty() ? cv::Mat::zeros(frame.size(), frame.type())
+                                             : colored_mask;
 
     cv::putText(mask_view, "Mascara (HSV + filtros)", {20, 40}, cv::FONT_HERSHEY_SIMPLEX,
                 0.8, {255, 255, 255}, 2);
@@ -78,6 +74,74 @@ cv::Mat LaneVisualizer::buildDebugView(const cv::Mat &frame, const LaneDetection
     mask_resized.copyTo(debug_view(cv::Rect(overlay.cols, 0, overlay.cols, overlay.rows)));
 
     return debug_view;
+}
+
+cv::Mat LaneVisualizer::toBinaryMask(const cv::Mat &mask) const {
+    if (mask.empty()) {
+        return cv::Mat();
+    }
+
+    cv::Mat gray;
+    if (mask.channels() == 1) {
+        gray = mask;
+    } else {
+        cv::cvtColor(mask, gray, cv::COLOR_BGR2GRAY);
+    }
+
+    cv::Mat binary;
+    cv::threshold(gray, binary, 0, 255, cv::THRESH_BINARY);
+    return binary;
+}
+
+cv::Mat LaneVisualizer::buildColoredMask(const cv::Mat &binary_mask) const {
+    if (binary_mask.empty()) {
+        return cv::Mat();
+    }
+
+    cv::Mat labels;
+    cv::Mat stats;
+    cv::Mat centroids;
+    const int components =
+        cv::connectedComponentsWithStats(binary_mask, labels, stats, centroids, 8, CV_32S);
+
+    if (components <= 1) {
+        return cv::Mat();
+    }
+
+    std::vector<cv::Vec3b> colors(static_cast<size_t>(components));
+    colors[0] = {0, 0, 0};
+
+    for (int i = 1; i < components; ++i) {
+        const unsigned seed = static_cast<unsigned>(i * 73856093u) ^ 0x5bd1e995u;
+        colors[static_cast<size_t>(i)] =
+            cv::Vec3b(seed & 0xFFu, (seed >> 8u) & 0xFFu, (seed >> 16u) & 0xFFu);
+    }
+
+    cv::Mat colored(binary_mask.size(), CV_8UC3);
+    for (int y = 0; y < labels.rows; ++y) {
+        const int *label_row = labels.ptr<int>(y);
+        cv::Vec3b *color_row = colored.ptr<cv::Vec3b>(y);
+        for (int x = 0; x < labels.cols; ++x) {
+            const int label = label_row[x];
+            color_row[x] = colors[static_cast<size_t>(label)];
+        }
+    }
+
+    return colored;
+}
+
+cv::Mat LaneVisualizer::applyMaskOverlay(const cv::Mat &frame, const cv::Mat &colored_mask,
+                                         const cv::Mat &binary_mask) const {
+    if (frame.empty() || colored_mask.empty() || binary_mask.empty()) {
+        return frame.clone();
+    }
+
+    cv::Mat overlay = frame.clone();
+    colored_mask.copyTo(overlay, binary_mask);
+
+    cv::Mat blended;
+    cv::addWeighted(overlay, 0.45, frame, 0.55, 0.0, blended);
+    return blended;
 }
 
 } // namespace autonomous_car::services::camera
