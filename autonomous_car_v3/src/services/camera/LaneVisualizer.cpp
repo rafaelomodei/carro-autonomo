@@ -12,6 +12,122 @@ const cv::Scalar kLeftColor{255, 215, 0};
 const cv::Scalar kRightColor{0, 215, 255};
 const cv::Scalar kCenterColor{0, 255, 0};
 const cv::Scalar kFrameCenterColor{255, 255, 255};
+const cv::Scalar kEvaColor{0, 255, 0};
+const cv::Scalar kLeftPaperColor{0, 0, 255};
+const cv::Scalar kRightPaperColor{255, 0, 0};
+constexpr double kMinContourArea = 500.0;
+
+struct RegionMasks {
+    cv::Mat eva;
+    cv::Mat left;
+    cv::Mat right;
+};
+
+cv::Mat ToBinaryMask(const cv::Mat &mask) {
+    if (mask.empty()) {
+        return cv::Mat();
+    }
+
+    cv::Mat gray;
+    if (mask.channels() == 1) {
+        gray = mask;
+    } else {
+        cv::cvtColor(mask, gray, cv::COLOR_BGR2GRAY);
+    }
+
+    cv::Mat binary;
+    cv::threshold(gray, binary, 0, 255, cv::THRESH_BINARY);
+    return binary;
+}
+
+RegionMasks BuildRegionMasks(const cv::Mat &white_mask, const cv::Mat &roi_mask) {
+    RegionMasks masks;
+    if (white_mask.empty()) {
+        return masks;
+    }
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(white_mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    const int width = white_mask.cols;
+    masks.left = cv::Mat::zeros(white_mask.size(), CV_8U);
+    masks.right = cv::Mat::zeros(white_mask.size(), CV_8U);
+
+    for (const auto &contour : contours) {
+        if (cv::contourArea(contour) < kMinContourArea) {
+            continue;
+        }
+
+        const cv::Moments m = cv::moments(contour);
+        if (m.m00 == 0.0) {
+            continue;
+        }
+
+        const double cx = m.m10 / m.m00;
+        if (cx < static_cast<double>(width) / 2.0) {
+            cv::drawContours(masks.left, std::vector<std::vector<cv::Point>>{contour}, -1, 255,
+                             cv::FILLED);
+        } else {
+            cv::drawContours(masks.right, std::vector<std::vector<cv::Point>>{contour}, -1, 255,
+                             cv::FILLED);
+        }
+    }
+
+    cv::bitwise_not(white_mask, masks.eva);
+    if (!roi_mask.empty()) {
+        cv::bitwise_and(masks.eva, roi_mask, masks.eva);
+    }
+
+    return masks;
+}
+
+cv::Mat BuildColoredMask(const RegionMasks &masks) {
+    if (masks.eva.empty() && masks.left.empty() && masks.right.empty()) {
+        return cv::Mat();
+    }
+
+    const cv::Size size = !masks.eva.empty()
+                               ? masks.eva.size()
+                               : (!masks.left.empty() ? masks.left.size() : masks.right.size());
+
+    cv::Mat colored = cv::Mat::zeros(size, CV_8UC3);
+    if (!masks.eva.empty()) {
+        colored.setTo(kEvaColor, masks.eva);
+    }
+    if (!masks.left.empty()) {
+        colored.setTo(kLeftPaperColor, masks.left);
+    }
+    if (!masks.right.empty()) {
+        colored.setTo(kRightPaperColor, masks.right);
+    }
+
+    return colored;
+}
+
+cv::Mat BuildCombinedMask(const RegionMasks &masks) {
+    cv::Mat combined;
+    if (!masks.eva.empty()) {
+        combined = masks.eva.clone();
+    }
+
+    if (!masks.left.empty()) {
+        if (combined.empty()) {
+            combined = masks.left.clone();
+        } else {
+            cv::bitwise_or(combined, masks.left, combined);
+        }
+    }
+
+    if (!masks.right.empty()) {
+        if (combined.empty()) {
+            combined = masks.right.clone();
+        } else {
+            cv::bitwise_or(combined, masks.right, combined);
+        }
+    }
+
+    return combined;
+}
 }
 
 void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &result) const {
@@ -54,10 +170,12 @@ cv::Mat LaneVisualizer::buildDebugView(const cv::Mat &frame, const LaneDetection
         return frame;
     }
 
-    cv::Mat binary_mask = toBinaryMask(result.processed_frame);
-    cv::Mat colored_mask = buildColoredMask(binary_mask);
+    const cv::Mat binary_mask = ToBinaryMask(result.processed_frame);
+    const RegionMasks region_masks = BuildRegionMasks(binary_mask, result.roi_mask);
+    const cv::Mat colored_mask = BuildColoredMask(region_masks);
+    const cv::Mat combined_mask = BuildCombinedMask(region_masks);
 
-    cv::Mat overlay = applyMaskOverlay(frame, colored_mask, binary_mask);
+    cv::Mat overlay = applyMaskOverlay(frame, colored_mask, combined_mask);
     drawLaneOverlay(overlay, result);
 
     cv::Mat mask_view = colored_mask.empty() ? cv::Mat::zeros(frame.size(), frame.type())
@@ -77,57 +195,12 @@ cv::Mat LaneVisualizer::buildDebugView(const cv::Mat &frame, const LaneDetection
 }
 
 cv::Mat LaneVisualizer::toBinaryMask(const cv::Mat &mask) const {
-    if (mask.empty()) {
-        return cv::Mat();
-    }
-
-    cv::Mat gray;
-    if (mask.channels() == 1) {
-        gray = mask;
-    } else {
-        cv::cvtColor(mask, gray, cv::COLOR_BGR2GRAY);
-    }
-
-    cv::Mat binary;
-    cv::threshold(gray, binary, 0, 255, cv::THRESH_BINARY);
-    return binary;
+    return ToBinaryMask(mask);
 }
 
 cv::Mat LaneVisualizer::buildColoredMask(const cv::Mat &binary_mask) const {
-    if (binary_mask.empty()) {
-        return cv::Mat();
-    }
-
-    cv::Mat labels;
-    cv::Mat stats;
-    cv::Mat centroids;
-    const int components =
-        cv::connectedComponentsWithStats(binary_mask, labels, stats, centroids, 8, CV_32S);
-
-    if (components <= 1) {
-        return cv::Mat();
-    }
-
-    std::vector<cv::Vec3b> colors(static_cast<size_t>(components));
-    colors[0] = {0, 0, 0};
-
-    for (int i = 1; i < components; ++i) {
-        const unsigned seed = static_cast<unsigned>(i * 73856093u) ^ 0x5bd1e995u;
-        colors[static_cast<size_t>(i)] =
-            cv::Vec3b(seed & 0xFFu, (seed >> 8u) & 0xFFu, (seed >> 16u) & 0xFFu);
-    }
-
-    cv::Mat colored(binary_mask.size(), CV_8UC3);
-    for (int y = 0; y < labels.rows; ++y) {
-        const int *label_row = labels.ptr<int>(y);
-        cv::Vec3b *color_row = colored.ptr<cv::Vec3b>(y);
-        for (int x = 0; x < labels.cols; ++x) {
-            const int label = label_row[x];
-            color_row[x] = colors[static_cast<size_t>(label)];
-        }
-    }
-
-    return colored;
+    const RegionMasks masks = BuildRegionMasks(binary_mask, {});
+    return BuildColoredMask(masks);
 }
 
 cv::Mat LaneVisualizer::applyMaskOverlay(const cv::Mat &frame, const cv::Mat &colored_mask,

@@ -19,6 +19,7 @@ struct LaneDetectionResult {
     double lateral_offset_px{0.0};
     double lateral_offset_percentage{0.0};
     cv::Mat processed_frame;
+    cv::Mat roi_mask;
 };
 
 } // namespace autonomous_car::services::camera

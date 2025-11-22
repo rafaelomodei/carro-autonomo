@@ -118,6 +118,32 @@ LaneBoundarySegment BuildVerticalFallback(int x, int top_y, int bottom_y, int wi
     boundary.valid = true;
     return boundary;
 }
+
+cv::Mat BuildRoiMask(const cv::Size &size, double start_ratio, double end_ratio) {
+    if (size.empty()) {
+        return cv::Mat();
+    }
+
+    start_ratio = std::clamp(start_ratio, 0.0, 1.0);
+    end_ratio = std::clamp(end_ratio, 0.0, 1.0);
+    if (end_ratio <= start_ratio) {
+        return cv::Mat::zeros(size, CV_8U);
+    }
+
+    const int total_rows = size.height;
+    int start_row = static_cast<int>(std::round(total_rows * start_ratio));
+    int end_row = static_cast<int>(std::round(total_rows * end_ratio));
+    start_row = std::clamp(start_row, 0, total_rows);
+    end_row = std::clamp(end_row, 0, total_rows);
+
+    if (start_row >= end_row) {
+        return cv::Mat::zeros(size, CV_8U);
+    }
+
+    cv::Mat roi_mask = cv::Mat::zeros(size, CV_8U);
+    roi_mask(cv::Range(start_row, end_row), cv::Range::all()).setTo(255);
+    return roi_mask;
+}
 }
 
 LaneDetector::LaneDetector() : LaneDetector(LaneFilterConfig::LoadFromEnv()) {}
@@ -130,6 +156,8 @@ LaneDetectionResult LaneDetector::detect(const cv::Mat &frame) const {
     if (frame.empty()) {
         return result;
     }
+
+    result.roi_mask = BuildRoiMask(frame.size(), config_.roi_band_start_ratio, config_.roi_band_end_ratio);
 
     cv::Mat processed = frame;
     for (const auto &filter : filters_) {
@@ -146,6 +174,7 @@ LaneDetectionResult LaneDetector::detect(const cv::Mat &frame) const {
     LaneDetectionResult analysis = analyzeMask(processed, frame.size());
     analysis.processed_frame = result.processed_frame;
     analysis.frame_center = result.frame_center;
+    analysis.roi_mask = result.roi_mask;
     return analysis;
 }
 
