@@ -1,6 +1,9 @@
 #include "services/camera/LaneVisualizer.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <vector>
 
@@ -12,7 +15,40 @@ const cv::Scalar kLeftColor{255, 215, 0};
 const cv::Scalar kRightColor{0, 215, 255};
 const cv::Scalar kCenterColor{0, 255, 0};
 const cv::Scalar kFrameCenterColor{255, 255, 255};
+const cv::Scalar kHorizonColor{180, 180, 255};
+
+cv::Point ProjectPointToY(const cv::Point &a, const cv::Point &b, int target_y, int image_width) {
+    if (image_width <= 0) {
+        return {};
+    }
+
+    const int clamped_y = std::clamp(target_y, 0, std::numeric_limits<int>::max());
+    if (a.y == b.y) {
+        return {std::clamp(a.x, 0, image_width - 1), clamped_y};
+    }
+
+    const double slope = static_cast<double>(b.x - a.x) / static_cast<double>(b.y - a.y);
+    const double x = static_cast<double>(a.x) + slope * static_cast<double>(clamped_y - a.y);
+    return {std::clamp(static_cast<int>(std::lround(x)), 0, image_width - 1), clamped_y};
 }
+
+LaneBoundarySegment AlignBoundaryToHorizon(const LaneBoundarySegment &boundary, int horizon_y,
+                                           int image_width) {
+    LaneBoundarySegment aligned;
+    if (!boundary.valid) {
+        return aligned;
+    }
+
+    const cv::Point top = ProjectPointToY(boundary.top, boundary.bottom, horizon_y, image_width);
+    const int bottom_y = std::max(boundary.bottom.y, top.y + 1);
+    const cv::Point bottom = ProjectPointToY(boundary.top, boundary.bottom, bottom_y, image_width);
+
+    aligned.top = top;
+    aligned.bottom = bottom;
+    aligned.valid = true;
+    return aligned;
+}
+} // namespace
 
 void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &result) const {
     if (frame.empty()) {
@@ -21,6 +57,8 @@ void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &
 
     cv::line(frame, {result.frame_center.x, 0},
              {result.frame_center.x, frame.rows}, kFrameCenterColor, 1, cv::LINE_AA);
+
+    const cv::Point horizon_point = computeHorizonPoint(result, frame.rows);
 
     if (!result.lane_found) {
         cv::putText(frame, "Faixa nao detectada", {20, 40}, cv::FONT_HERSHEY_SIMPLEX,
@@ -35,10 +73,16 @@ void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &
         cv::line(frame, boundary.top, boundary.bottom, color, 2, cv::LINE_AA);
     };
 
-    drawBoundary(result.left_boundary, kLeftColor);
-    drawBoundary(result.right_boundary, kRightColor);
+    const auto aligned_left = AlignBoundaryToHorizon(result.left_boundary, horizon_point.y, frame.cols);
+    const auto aligned_right =
+        AlignBoundaryToHorizon(result.right_boundary, horizon_point.y, frame.cols);
+
+    drawBoundary(aligned_left, kLeftColor);
+    drawBoundary(aligned_right, kRightColor);
 
     cv::circle(frame, result.lane_center, 6, kCenterColor, cv::FILLED);
+    cv::circle(frame, horizon_point, 5, kHorizonColor, cv::FILLED);
+    cv::line(frame, horizon_point, result.lane_center, kHorizonColor, 2, cv::LINE_AA);
     cv::line(frame, result.frame_center, result.lane_center, kCenterColor, 2, cv::LINE_AA);
 
     std::ostringstream offset_text;
@@ -74,6 +118,28 @@ cv::Mat LaneVisualizer::buildDebugView(const cv::Mat &frame, const LaneDetection
     mask_resized.copyTo(debug_view(cv::Rect(overlay.cols, 0, overlay.cols, overlay.rows)));
 
     return debug_view;
+}
+
+cv::Point LaneVisualizer::computeHorizonPoint(const LaneDetectionResult &result, int image_height) const {
+    if (image_height <= 0) {
+        return result.frame_center;
+    }
+
+    const int default_y = image_height / 3;
+    int horizon_y = default_y;
+
+    if (result.left_boundary.valid && result.right_boundary.valid) {
+        horizon_y = std::min(result.left_boundary.top.y, result.right_boundary.top.y);
+    } else if (result.left_boundary.valid) {
+        horizon_y = result.left_boundary.top.y;
+    } else if (result.right_boundary.valid) {
+        horizon_y = result.right_boundary.top.y;
+    }
+
+    horizon_y = std::clamp(horizon_y, 0, image_height - 1);
+    const int max_width = std::max(0, result.frame_center.x * 2 - 1);
+    const int horizon_x = result.lane_center.x > 0 ? result.lane_center.x : result.frame_center.x;
+    return {std::clamp(horizon_x, 0, max_width), horizon_y};
 }
 
 cv::Mat LaneVisualizer::toBinaryMask(const cv::Mat &mask) const {

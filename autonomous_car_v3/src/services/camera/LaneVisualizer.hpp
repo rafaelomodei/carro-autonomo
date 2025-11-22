@@ -12,6 +12,7 @@ class LaneVisualizer {
 
   private:
     void drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &result) const;
+    cv::Point computeHorizonPoint(const LaneDetectionResult &result, int image_height) const;
     cv::Mat toBinaryMask(const cv::Mat &mask) const;
     cv::Mat buildColoredMask(const cv::Mat &binary_mask) const;
     cv::Mat applyMaskOverlay(const cv::Mat &frame, const cv::Mat &colored_mask,
