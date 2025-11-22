@@ -10,6 +10,7 @@
 
 #include "services/camera/LaneDetector.hpp"
 #include "services/camera/LaneVisualizer.hpp"
+#include "services/camera/algorithms/EdgeAnalyzer.hpp"
 
 namespace autonomous_car::services {
 
@@ -17,8 +18,10 @@ CameraService::CameraService(int camera_index, std::string window_name)
     : camera_index_(camera_index),
       window_name_(std::move(window_name)),
       processed_window_name_(window_name_ + " - Processado"),
+      edges_window_name_(window_name_ + " - Bordas"),
       lane_detector_(std::make_unique<camera::LaneDetector>()),
-      lane_visualizer_(std::make_unique<camera::LaneVisualizer>()) {}
+      lane_visualizer_(std::make_unique<camera::LaneVisualizer>()),
+      edge_analyzer_(std::make_unique<camera::algorithms::EdgeAnalyzer>()) {}
 
 CameraService::~CameraService() { stop(); }
 
@@ -52,6 +55,7 @@ void CameraService::run() {
         running_.store(true);
         cv::namedWindow(window_name_, cv::WINDOW_AUTOSIZE);
         cv::namedWindow(processed_window_name_, cv::WINDOW_AUTOSIZE);
+        cv::namedWindow(edges_window_name_, cv::WINDOW_AUTOSIZE);
 
         while (!stop_requested_.load()) {
             cv::Mat frame;
@@ -74,9 +78,18 @@ void CameraService::run() {
                 processed_view = lane_visualizer_->buildDebugView(frame, detection_result);
             }
 
+            cv::Mat edges_view;
+            if (edge_analyzer_) {
+                const auto edge_result = edge_analyzer_->analyze(frame);
+                edges_view = edge_analyzer_->buildDebugView(frame, edge_result);
+            }
+
             cv::imshow(window_name_, frame);
             if (!processed_view.empty()) {
                 cv::imshow(processed_window_name_, processed_view);
+            }
+            if (!edges_view.empty()) {
+                cv::imshow(edges_window_name_, edges_view);
             }
             // waitKey permite ao HighGUI atualizar a janela; 1ms evita bloquear o loop.
             if (cv::waitKey(1) == 27) { // tecla ESC
@@ -101,6 +114,9 @@ void CameraService::destroyWindows() const {
     }
     if (!processed_window_name_.empty()) {
         cv::destroyWindow(processed_window_name_);
+    }
+    if (!edges_window_name_.empty()) {
+        cv::destroyWindow(edges_window_name_);
     }
 }
 

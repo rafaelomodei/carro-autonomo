@@ -14,6 +14,9 @@ namespace autonomous_car::services {
 namespace camera {
 class LaneDetector;
 class LaneVisualizer;
+namespace algorithms {
+class EdgeAnalyzer;
+}
 } // namespace camera
 
 class CameraService {
@@ -39,8 +42,10 @@ class CameraService {
     int camera_index_;
     std::string window_name_;
     std::string processed_window_name_;
+    std::string edges_window_name_;
     std::unique_ptr<camera::LaneDetector> lane_detector_;
     std::unique_ptr<camera::LaneVisualizer> lane_visualizer_;
+    std::unique_ptr<camera::algorithms::EdgeAnalyzer> edge_analyzer_;
 };
 
 } // namespace autonomous_car::services
