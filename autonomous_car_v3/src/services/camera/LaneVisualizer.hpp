@@ -12,6 +12,10 @@ class LaneVisualizer {
 
   private:
     void drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &result) const;
+    cv::Mat toBinaryMask(const cv::Mat &mask) const;
+    cv::Mat buildColoredMask(const cv::Mat &binary_mask) const;
+    cv::Mat applyMaskOverlay(const cv::Mat &frame, const cv::Mat &colored_mask,
+                             const cv::Mat &binary_mask) const;
 };
 
 } // namespace autonomous_car::services::camera
