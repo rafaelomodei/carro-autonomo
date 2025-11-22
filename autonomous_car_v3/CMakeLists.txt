@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS videoio highgui core)
+find_package(OpenCV REQUIRED COMPONENTS videoio highgui core imgproc)
 
 add_executable(${PROJECT_NAME}
     src/main.cpp
@@ -24,6 +24,8 @@ add_executable(${PROJECT_NAME}
     src/commands/steering/SteeringCommand.cpp
     src/services/WebSocketServer.cpp
     src/services/CameraService.cpp
+    src/services/camera/algorithms/EdgeAnalyzer.cpp
+    src/services/camera/algorithms/EdgeDetectionConfig.cpp
     src/services/camera/LaneDetector.cpp
     src/services/camera/LaneFilterConfig.cpp
     src/services/camera/LaneVisualizer.cpp

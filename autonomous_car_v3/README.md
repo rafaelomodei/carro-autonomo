@@ -113,8 +113,16 @@ O processamento do vídeo usa variáveis de ambiente (ou entradas no `.env`) par
 | `LANE_MORPH_KERNEL` | Tamanho do kernel usado na operação morfológica _close_, responsável por preencher falhas na faixa detectada. |
 | `LANE_MORPH_ITERATIONS` | Número de repetições do _close_. Mais iterações juntam regiões próximas, porém podem engolir ruídos. |
 | `LANE_MIN_CONTOUR_AREA` | Área mínima (em px²) para considerar um contorno como pista válida, evitando falsos positivos pequenos. |
+| `EDGE_CANNY_THRESHOLD1` / `EDGE_CANNY_THRESHOLD2` | Limiar inferior e superior do detector de bordas de Canny. Ajuste para controlar a sensibilidade em diferentes iluminações. |
+| `EDGE_CANNY_APERTURE` | Kernel Sobel (3/5/7) usado pelo Canny. Valores maiores suavizam gradientes mas podem perder detalhes finos. |
+| `EDGE_CANNY_L2GRADIENT` | Define se o cálculo do gradiente usa norma L2 (mais preciso) ou L1 (mais rápido). |
+| `EDGE_BLUR_KERNEL` | Kernel aplicado antes do Canny para reduzir ruído e estabilizar o mapa de bordas. |
 
 Após definir as variáveis (por exemplo exportando antes de rodar `start.sh`), reinicie o serviço para que os novos parâmetros sejam aplicados.
+
+### Visualização de bordas e gráficos auxiliares
+
+O `CameraService` agora exibe uma janela adicional intitulada **"Bordas"**, com o resultado do Canny aplicado diretamente no frame e um gráfico de densidade de bordas por coluna. Esse painel ajuda a avaliar rapidamente se os limiares do Canny estão equilibrados ou se partes relevantes da pista estão sendo descartadas. Ajuste as variáveis `EDGE_*` para observar em tempo real como o histograma responde às mudanças de contraste e ruído.
 
 ## Próximos passos sugeridos
 
