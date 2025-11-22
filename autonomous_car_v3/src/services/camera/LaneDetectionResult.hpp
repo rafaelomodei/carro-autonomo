@@ -15,10 +15,12 @@ struct LaneDetectionResult {
     LaneBoundarySegment left_boundary;
     LaneBoundarySegment right_boundary;
     cv::Point lane_center;
+    cv::Point horizon_point;
     cv::Point frame_center;
     double lateral_offset_px{0.0};
     double lateral_offset_percentage{0.0};
     cv::Mat processed_frame;
+    bool horizon_found{false};
 };
 
 } // namespace autonomous_car::services::camera

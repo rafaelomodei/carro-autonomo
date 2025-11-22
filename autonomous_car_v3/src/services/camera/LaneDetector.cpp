@@ -153,6 +153,10 @@ LaneDetectionResult LaneDetector::analyzeMask(const cv::Mat &mask,
                                               const cv::Size &frame_size) const {
     LaneDetectionResult result;
     result.frame_center = cv::Point(frame_size.width / 2, frame_size.height - 1);
+    const int default_horizon =
+        std::clamp(static_cast<int>(std::round(frame_size.height * config_.roi_band_start_ratio)), 0,
+                   std::max(0, frame_size.height - 1));
+    result.horizon_point = {result.frame_center.x, default_horizon};
 
     if (mask.empty()) {
         return result;
@@ -198,6 +202,9 @@ LaneDetectionResult LaneDetector::analyzeMask(const cv::Mat &mask,
         fallback_right_x = bounds.x + bounds.width;
     }
 
+    result.horizon_point.y = std::clamp(bounds.y, 0, std::max(0, frame_size.height - 1));
+    result.horizon_found = true;
+
     const cv::Moments contour_moments = cv::moments(largest_contour);
     if (contour_moments.m00 != 0.0) {
         result.lane_center = cv::Point(static_cast<int>(contour_moments.m10 / contour_moments.m00),
@@ -208,6 +215,8 @@ LaneDetectionResult LaneDetector::analyzeMask(const cv::Mat &mask,
     } else {
         result.lane_center = cv::Point(result.frame_center.x, bottom_row - band_height / 2);
     }
+
+    result.horizon_point.x = result.lane_center.x;
 
     const auto samples = CollectBoundarySamples(single_channel, bounds, result.lane_center.x);
     result.left_boundary = FitBoundarySegment(samples.left, single_channel.cols);

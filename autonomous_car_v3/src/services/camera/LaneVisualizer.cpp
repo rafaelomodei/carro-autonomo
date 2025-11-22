@@ -1,5 +1,7 @@
 #include "services/camera/LaneVisualizer.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 #include <vector>
@@ -12,6 +14,28 @@ const cv::Scalar kLeftColor{255, 215, 0};
 const cv::Scalar kRightColor{0, 215, 255};
 const cv::Scalar kCenterColor{0, 255, 0};
 const cv::Scalar kFrameCenterColor{255, 255, 255};
+
+cv::Point ProjectToY(const LaneBoundarySegment &boundary, int target_y, int width, int height) {
+    target_y = std::clamp(target_y, 0, std::max(0, height - 1));
+    if (!boundary.valid || width <= 0 || height <= 0) {
+        return {};
+    }
+
+    const int x1 = boundary.top.x;
+    const int y1 = boundary.top.y;
+    const int x2 = boundary.bottom.x;
+    const int y2 = boundary.bottom.y;
+
+    if (y1 == y2) {
+        const int clamped_x = std::clamp(x1, 0, std::max(0, width - 1));
+        return {clamped_x, target_y};
+    }
+
+    const float t = static_cast<float>(target_y - y1) / static_cast<float>(y2 - y1);
+    const int x = std::clamp(static_cast<int>(std::lround(x1 + (x2 - x1) * t)), 0,
+                              std::max(0, width - 1));
+    return {x, target_y};
+}
 }
 
 void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &result) const {
@@ -28,15 +52,30 @@ void LaneVisualizer::drawLaneOverlay(cv::Mat &frame, const LaneDetectionResult &
         return;
     }
 
+    const bool has_horizon =
+        result.horizon_found && result.horizon_point.y >= 0 && result.horizon_point.y < frame.rows;
+    const cv::Point horizon = has_horizon
+                                  ? cv::Point(std::clamp(result.horizon_point.x, 0, frame.cols - 1),
+                                              std::clamp(result.horizon_point.y, 0, frame.rows - 1))
+                                  : cv::Point();
+
     const auto drawBoundary = [&](const LaneBoundarySegment &boundary, const cv::Scalar &color) {
         if (!boundary.valid) {
             return;
         }
-        cv::line(frame, boundary.top, boundary.bottom, color, 2, cv::LINE_AA);
+        cv::Point start = boundary.top;
+        if (has_horizon) {
+            start = ProjectToY(boundary, horizon.y, frame.cols, frame.rows);
+        }
+        cv::line(frame, start, boundary.bottom, color, 2, cv::LINE_AA);
     };
 
     drawBoundary(result.left_boundary, kLeftColor);
     drawBoundary(result.right_boundary, kRightColor);
+
+    if (has_horizon) {
+        cv::circle(frame, horizon, 4, kFrameCenterColor, cv::FILLED);
+    }
 
     cv::circle(frame, result.lane_center, 6, kCenterColor, cv::FILLED);
     cv::line(frame, result.frame_center, result.lane_center, kCenterColor, 2, cv::LINE_AA);
