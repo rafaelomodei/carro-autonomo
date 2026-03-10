@@ -198,6 +198,24 @@ bool loadVisionRuntimeConfigFromFile(const std::string &path, VisionRuntimeConfi
             continue;
         }
 
+        if (key == "VISION_STREAM_MAX_FPS") {
+            if (const auto parsed = parseDouble(value)) {
+                config.stream_max_fps = std::clamp(*parsed, 0.1, 60.0);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "VISION_STREAM_JPEG_QUALITY") {
+            if (const auto parsed = parseInt(value)) {
+                config.stream_jpeg_quality = std::clamp(*parsed, 10, 100);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
         if (key == "VISION_SEGMENTATION_CONFIG_PATH") {
             config.segmentation_config_path = resolveMaybeRelativePath(config_path, value);
             continue;

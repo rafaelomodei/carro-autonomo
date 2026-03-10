@@ -10,13 +10,14 @@ export default function PageLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const shouldTopAlign = pathname === '/settings' || pathname === '/debug';
 
   return (
     <div className='flex flex-col items-center h-full py-8'>
       <StatusBar />
       <div
         className={`flex flex-col w-full flex-grow items-center max-h-meddle ${
-          pathname !== '/settings' ? 'justify-center' : ''
+          shouldTopAlign ? '' : 'justify-center'
         }`}
       >
         {children}

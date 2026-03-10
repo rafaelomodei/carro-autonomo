@@ -1,177 +1,304 @@
 'use client';
 
-import { ModeToggle } from '@/components/atomics/ModeToggle';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { ModeToggle } from '@/components/atomics/ModeToggle';
+import {
+  DEFAULT_VEHICLE_CONNECTION_URL,
+  formatConnectionStateLabel,
+  formatDrivingModeLabel,
+  formatStopReasonLabel,
+  formatTrackingStateLabel,
+} from '@/lib/autonomous-car';
 import { isValidWebSocketUrl } from '@/lib/websocket';
-import { useVehicleConfig, DriveMode } from '@/providers/VehicleConfigProvider';
-import { useEffect, useState } from 'react';
+import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
 
 const Settings = () => {
-  const { config, setConfig } = useVehicleConfig();
-  const [url, setUrl] = useState<string>('');
-  const [initialUrl, setInitialUrl] = useState(config.carConnection);
-  const [isSaveEnabled, setIsSaveEnabled] = useState(false);
+  const {
+    autonomousControlTelemetry,
+    config,
+    connectionState,
+    isConnected,
+    pendingAutonomousCommand,
+    pendingDrivingMode,
+    saveConnectionUrl,
+    setDrivingMode,
+    startAutonomous,
+    stopAutonomous,
+    updateRuntimeSetting,
+  } = useVehicleConfig();
+
+  const [connectionUrl, setConnectionUrl] = useState(config.connectionUrl);
+  const [steeringSensitivity, setSteeringSensitivity] = useState([
+    config.steeringSensitivity,
+  ]);
+  const [steeringCommandStep, setSteeringCommandStep] = useState([
+    config.steeringCommandStep,
+  ]);
+  const [pidKp, setPidKp] = useState([config.pidControl.p]);
+  const [pidKi, setPidKi] = useState([config.pidControl.i]);
+  const [pidKd, setPidKd] = useState([config.pidControl.d]);
 
   useEffect(() => {
-    if (!isValidWebSocketUrl(url)) return setIsSaveEnabled(false);
+    setConnectionUrl(config.connectionUrl);
+  }, [config.connectionUrl]);
 
-    setIsSaveEnabled(url !== initialUrl);
-  }, [url, initialUrl]);
+  useEffect(() => {
+    setSteeringSensitivity([config.steeringSensitivity]);
+    setSteeringCommandStep([config.steeringCommandStep]);
+    setPidKp([config.pidControl.p]);
+    setPidKi([config.pidControl.i]);
+    setPidKd([config.pidControl.d]);
+  }, [
+    config.pidControl.d,
+    config.pidControl.i,
+    config.pidControl.p,
+    config.steeringCommandStep,
+    config.steeringSensitivity,
+  ]);
 
-  const handleDriveModeChange = (value: boolean) => {
-    setConfig({
-      ...config,
-      driveMode: value ? DriveMode.MANUAL : DriveMode.AUTONOMOUS,
-    });
-  };
-
-  const handleDriveSteeringSensitivity = (value: number[]) => {
-    setConfig({
-      ...config,
-      steeringSensitivity: value[0], // O valor é o primeiro elemento do array
-    });
-  };
-
-  const handlePidControlP = (value: number[]) => {
-    setConfig({
-      ...config,
-      pidControl: { ...config.pidControl, p: value[0] },
-    });
-  };
-
-  const handlePidControlI = (value: number[]) => {
-    setConfig({
-      ...config,
-      pidControl: { ...config.pidControl, i: value[0] },
-    });
-  };
-
-  const handlePidControlD = (value: number[]) => {
-    setConfig({
-      ...config,
-      pidControl: { ...config.pidControl, d: value[0] },
-    });
-  };
-
-  const handleServerSave = () => {
-    setInitialUrl(config.carConnection);
-    setIsSaveEnabled(false);
-
-    setConfig({
-      ...config,
-      carConnection: url,
-    });
-  };
+  const normalizedUrl = connectionUrl.trim();
+  const isUrlDirty = normalizedUrl !== config.connectionUrl;
+  const canSaveUrl =
+    isUrlDirty &&
+    (normalizedUrl.length === 0 || isValidWebSocketUrl(normalizedUrl));
+  const actualDrivingMode =
+    autonomousControlTelemetry?.driving_mode ?? pendingDrivingMode ?? 'manual';
+  const isAutonomousMode = actualDrivingMode === 'autonomous';
 
   return (
-    <div className='flex flex-col max-w-lg w-full min-h-full overflow-y-auto gap-8 pt-16'>
+    <div className='flex w-full max-w-5xl flex-col gap-8 overflow-y-auto px-2 py-8'>
       <div>
-        <h1 className='text-3xl font-bold'>Configurações</h1>
-        <Separator />
-      </div>
-      <div className='flex items-center justify-between'>
-        <Label className='text-md'>Servidor do veículo</Label>
-        <Input
-          id='server-car'
-          onChange={(e) => setUrl(e.target.value)}
-          value={url}
-          defaultValue={config.carConnection}
-          className='max-w-60'
-        />
-        <Button onClick={handleServerSave} disabled={!isSaveEnabled}>
-          Salvar
-        </Button>
+        <h1 className='text-3xl font-bold'>Configuracoes</h1>
+        <p className='mt-2 text-sm text-muted-foreground'>
+          Esta tela controla apenas o contrato suportado hoje pelo
+          `autonomous_car_v3`.
+        </p>
       </div>
 
-      <div className='flex items-center justify-between'>
-        <Label className='text-md'>Tema atual</Label>
-        <ModeToggle showSelectedTheme={true} />
-      </div>
-
-      <div>
-        <h1 className='text-2xl font-bold'>Direção</h1>
-        <Separator />
-      </div>
-
-      <div className='flex items-center justify-between'>
-        <Label className='text-md'>Modo de condução manual</Label>
-        <Switch
-          id='drivingMode'
-          checked={config.driveMode.id === DriveMode.MANUAL.id}
-          onCheckedChange={handleDriveModeChange}
-        />
-      </div>
-
-      <div
-        className={`flex-col flex gap-4 ${
-          config.driveMode.id !== DriveMode.MANUAL.id ? 'opacity-35' : ''
-        }`}
-      >
-        <Label className='text-md'>
-          Sensibilidade da direção:{' '}
-          <strong>{config.steeringSensitivity}</strong>
-        </Label>
-        <Slider
-          disabled={config.driveMode.id !== DriveMode.MANUAL.id}
-          defaultValue={[config.steeringSensitivity]}
-          onValueChange={(value) => handleDriveSteeringSensitivity(value)}
-          max={1}
-          min={0.1}
-          step={0.1}
-        />
-      </div>
-
-      <div
-        className={`flex-col flex gap-4 ${
-          config.driveMode.id === DriveMode.MANUAL.id ? 'opacity-35' : ''
-        }`}
-      >
-        <Label className='text-md font-bold'>Controle PID</Label>
-
-        <div className='flex w-full gap-8'>
-          <div className='flex-col flex gap-4 items-center w-full'>
-            <Label className='text-md'>Kp: {config.pidControl.p}</Label>
-            <Slider
-              defaultValue={[config.steeringSensitivity]}
-              disabled={config.driveMode.id === DriveMode.MANUAL.id}
-              onValueChange={(value) => handlePidControlP(value)}
-              max={1}
-              min={0.1}
-              step={0.1}
-            />
+      <div className='grid gap-6 lg:grid-cols-2'>
+        <section className='rounded-2xl border p-6'>
+          <div className='flex items-center justify-between'>
+            <div>
+              <h2 className='text-xl font-semibold'>Conexao do veiculo</h2>
+              <p className='text-sm text-muted-foreground'>
+                WebSocket compartilhado em modo `client:control`.
+              </p>
+            </div>
+            <ModeToggle showSelectedTheme />
           </div>
-          <div className='flex-col flex gap-4 items-center w-full'>
-            <Label className='text-md'>Ki: {config.pidControl.i}</Label>
-            <Slider
-              defaultValue={[config.steeringSensitivity]}
-              disabled={config.driveMode.id === DriveMode.MANUAL.id}
-              onValueChange={(value) => handlePidControlI(value)}
-              max={1}
-              min={0.1}
-              step={0.1}
-            />
+
+          <Separator className='my-4' />
+
+          <div className='space-y-4'>
+            <div className='space-y-2'>
+              <Label htmlFor='vehicle-server-url'>Servidor WebSocket</Label>
+              <Input
+                id='vehicle-server-url'
+                placeholder={DEFAULT_VEHICLE_CONNECTION_URL}
+                value={connectionUrl}
+                onChange={(event) => setConnectionUrl(event.target.value)}
+              />
+              <p className='text-xs text-muted-foreground'>
+                Estado atual: {formatConnectionStateLabel(connectionState)}
+              </p>
+            </div>
+
+            <div className='flex gap-3'>
+              <Button
+                onClick={() => saveConnectionUrl(normalizedUrl)}
+                disabled={!canSaveUrl}
+              >
+                Salvar conexao
+              </Button>
+              <Button
+                variant='outline'
+                onClick={() => saveConnectionUrl('')}
+                disabled={!config.connectionUrl}
+              >
+                Desconectar
+              </Button>
+            </div>
           </div>
-          <div className='flex-col flex gap-4 items-center w-full'>
-            <Label className='text-md'>Kd: {config.pidControl.d}</Label>
-            <Slider
-              defaultValue={[config.steeringSensitivity]}
-              disabled={config.driveMode.id === DriveMode.MANUAL.id}
-              onValueChange={(value) => handlePidControlD(value)}
-              max={1}
-              min={0.1}
-              step={0.1}
-            />
+        </section>
+
+        <section className='rounded-2xl border p-6'>
+          <div>
+            <h2 className='text-xl font-semibold'>Estado operacional</h2>
+            <p className='text-sm text-muted-foreground'>
+              A telemetria do backend e a fonte de verdade do estado do carro.
+            </p>
+          </div>
+
+          <Separator className='my-4' />
+
+          <div className='space-y-4 text-sm'>
+            <div>
+              <p className='text-xs text-muted-foreground'>Modo atual</p>
+              <p className='font-semibold'>
+                {formatDrivingModeLabel(actualDrivingMode)}
+              </p>
+              {pendingDrivingMode && (
+                <p className='text-xs text-muted-foreground'>
+                  Troca de modo em sincronizacao
+                </p>
+              )}
+            </div>
+
+            <div className='flex items-center justify-between rounded-lg border p-4'>
+              <div>
+                <Label className='text-sm font-medium'>Modo manual</Label>
+                <p className='text-xs text-muted-foreground'>
+                  Desative para colocar o carro em modo autonomo.
+                </p>
+              </div>
+              <Switch
+                checked={actualDrivingMode === 'manual'}
+                disabled={!isConnected}
+                onCheckedChange={(checked) =>
+                  setDrivingMode(checked ? 'manual' : 'autonomous')
+                }
+              />
+            </div>
+
+            <div className='rounded-lg border p-4'>
+              <div className='flex flex-wrap gap-3'>
+                <Button
+                  onClick={startAutonomous}
+                  disabled={!isConnected || !isAutonomousMode}
+                >
+                  Start autonomo
+                </Button>
+                <Button
+                  variant='outline'
+                  onClick={stopAutonomous}
+                  disabled={!isConnected}
+                >
+                  Stop autonomo
+                </Button>
+              </div>
+
+              <div className='mt-3 space-y-1 text-xs text-muted-foreground'>
+                <p>
+                  Estado de tracking:{' '}
+                  {autonomousControlTelemetry
+                    ? formatTrackingStateLabel(
+                        autonomousControlTelemetry.tracking_state
+                      )
+                    : 'Aguardando telemetria'}
+                </p>
+                <p>
+                  Motivo da ultima parada:{' '}
+                  {autonomousControlTelemetry
+                    ? formatStopReasonLabel(
+                        autonomousControlTelemetry.stop_reason
+                      )
+                    : 'Aguardando telemetria'}
+                </p>
+                {pendingAutonomousCommand && (
+                  <p>Comando autonomo pendente: {pendingAutonomousCommand}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section className='rounded-2xl border p-6'>
+        <div>
+          <h2 className='text-xl font-semibold'>Ajustes manuais</h2>
+          <p className='text-sm text-muted-foreground'>
+            Alteracoes aplicadas via `config:*` e reaplicadas ao reconectar.
+          </p>
+        </div>
+
+        <Separator className='my-4' />
+
+        <div className='grid gap-8 lg:grid-cols-2'>
+          <div className='space-y-6'>
+            <div className='space-y-3'>
+              <Label>
+                Sensibilidade da direcao: {steeringSensitivity[0].toFixed(2)}
+              </Label>
+              <Slider
+                value={steeringSensitivity}
+                onValueChange={setSteeringSensitivity}
+                onValueCommit={(value) =>
+                  updateRuntimeSetting('steering.sensitivity', value[0])
+                }
+                min={0.1}
+                max={1}
+                step={0.05}
+              />
+            </div>
+
+            <div className='space-y-3'>
+              <Label>
+                Passo do comando de direcao: {steeringCommandStep[0].toFixed(2)}
+              </Label>
+              <Slider
+                value={steeringCommandStep}
+                onValueChange={setSteeringCommandStep}
+                onValueCommit={(value) =>
+                  updateRuntimeSetting('steering.command_step', value[0])
+                }
+                min={0.05}
+                max={1}
+                step={0.05}
+              />
+            </div>
+          </div>
+
+          <div className='space-y-6'>
+            <div className='space-y-3'>
+              <Label>Kp: {pidKp[0].toFixed(2)}</Label>
+              <Slider
+                value={pidKp}
+                onValueChange={setPidKp}
+                onValueCommit={(value) =>
+                  updateRuntimeSetting('autonomous.pid.kp', value[0])
+                }
+                min={0}
+                max={1}
+                step={0.01}
+              />
+            </div>
+
+            <div className='space-y-3'>
+              <Label>Ki: {pidKi[0].toFixed(2)}</Label>
+              <Slider
+                value={pidKi}
+                onValueChange={setPidKi}
+                onValueCommit={(value) =>
+                  updateRuntimeSetting('autonomous.pid.ki', value[0])
+                }
+                min={0}
+                max={0.5}
+                step={0.01}
+              />
+            </div>
+
+            <div className='space-y-3'>
+              <Label>Kd: {pidKd[0].toFixed(2)}</Label>
+              <Slider
+                value={pidKd}
+                onValueChange={setPidKd}
+                onValueCommit={(value) =>
+                  updateRuntimeSetting('autonomous.pid.kd', value[0])
+                }
+                min={0}
+                max={1}
+                step={0.01}
+              />
+            </div>
           </div>
         </div>
-      </div>
-
-      <Separator />
-      <div className='h-8' />
+      </section>
     </div>
   );
 };

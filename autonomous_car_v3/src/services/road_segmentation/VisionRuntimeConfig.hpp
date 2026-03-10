@@ -17,6 +17,8 @@ struct VisionRuntimeConfig {
     int camera_index{0};
     bool debug_window_enabled{true};
     double telemetry_max_fps{10.0};
+    double stream_max_fps{5.0};
+    int stream_jpeg_quality{70};
     std::string segmentation_config_path;
 };
 

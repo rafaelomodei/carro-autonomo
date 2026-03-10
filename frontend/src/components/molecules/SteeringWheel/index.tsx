@@ -1,22 +1,27 @@
-import React from 'react';
 import { GiSteeringWheel } from 'react-icons/gi';
 
 interface SteeringWheelProps {
-  angle: number;
+  steeringCommand: number;
 }
 
-const SteeringWheel: React.FC<SteeringWheelProps> = ({ angle }) => {
+const SteeringWheel = ({ steeringCommand }: SteeringWheelProps) => {
+  const angle = Math.round(steeringCommand * 90);
+
   return (
-    <div className='absolute right-4 mt-24 flex items-center gap-4 bg-white dark:bg-background p-2 rounded-lg'>
+    <div className='flex flex-col items-center justify-center gap-3 rounded-2xl border bg-white/80 p-6 text-center shadow-sm dark:bg-background/80'>
       <div
-        className='text-6xl transition-transform duration-200 ease-in-out'
+        className='text-7xl transition-transform duration-200 ease-in-out'
         style={{
           transform: `rotate(${angle}deg)`,
         }}
       >
         <GiSteeringWheel />
       </div>
-      <p className='text-sm font-bold'>Ângulo: {angle}°</p>
+      <div className='space-y-1'>
+        <p className='text-sm font-semibold'>Comando de direcao</p>
+        <p className='text-2xl font-bold'>{steeringCommand.toFixed(2)}</p>
+        <p className='text-xs text-muted-foreground'>Rotacao visual: {angle}°</p>
+      </div>
     </div>
   );
 };

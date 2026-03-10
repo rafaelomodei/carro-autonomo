@@ -183,6 +183,10 @@ int main() {
         vision_config_path.string(),
         &autonomous_control_service,
         [&server](const std::string &payload) { server.broadcastText(payload); },
+        [&server](auto view, const std::string &payload) {
+            server.broadcastVisionFrame(view, payload);
+        },
+        [&server]() { return server.snapshotVisionSubscriptions(); },
         autonomous_sink);
 
     server.start();

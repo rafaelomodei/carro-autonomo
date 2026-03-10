@@ -72,7 +72,11 @@ int main() {
     RoadSegmentationService road_segmentation_service(
         vision_config_path.string(),
         &autonomous_control_service,
-        [&server](const std::string &payload) { server.broadcastText(payload); });
+        [&server](const std::string &payload) { server.broadcastText(payload); },
+        [&server](auto view, const std::string &payload) {
+            server.broadcastVisionFrame(view, payload);
+        },
+        [&server]() { return server.snapshotVisionSubscriptions(); });
 
     server.start();
     road_segmentation_service.start();

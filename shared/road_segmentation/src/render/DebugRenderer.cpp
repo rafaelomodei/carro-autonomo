@@ -120,32 +120,19 @@ cv::Mat DebugRenderer::render(const pipeline::RoadSegmentationResult &result,
     return panel;
 }
 
-cv::Mat DebugRenderer::buildOriginalTile(const pipeline::RoadSegmentationResult &result,
-                                         const std::string &source_label) const {
-    cv::Mat tile = result.resized_frame.clone();
-    drawLookaheadOverlay(tile, result);
-    if (!result.roi_polygon_points.empty()) {
-        std::vector<std::vector<cv::Point>> polygons = {result.roi_polygon_points};
-        cv::polylines(tile, polygons, true, kRoiColor, 2, cv::LINE_AA);
-    } else if (result.roi_rect.area() > 0) {
-        cv::rectangle(tile, result.roi_rect, kRoiColor, 2, cv::LINE_AA);
-    }
-    if (!result.hood_mask_polygon_points.empty()) {
-        std::vector<std::vector<cv::Point>> polygons = {result.hood_mask_polygon_points};
-        cv::polylines(tile, polygons, true, kHoodMaskColor, 2, cv::LINE_AA);
+cv::Mat DebugRenderer::renderRawView(const pipeline::RoadSegmentationResult &result) const {
+    if (result.resized_frame.empty()) {
+        return cv::Mat();
     }
 
-    return composeTileCard(tile, "Original",
-                           {source_label,
-                            "ROI: trapezio util",
-                            "Lookahead: FAR/MID/NEAR",
-                            "Capo: " +
-                                std::string(result.hood_mask_polygon_points.empty() ? "off" : "masked")});
+    return result.resized_frame.clone();
 }
 
-cv::Mat DebugRenderer::buildPreprocessTile(const pipeline::RoadSegmentationResult &result,
-                                           const config::LabConfig &config,
-                                           const std::string &calibration_status) const {
+cv::Mat DebugRenderer::renderPreprocessView(const pipeline::RoadSegmentationResult &result) const {
+    if (result.resized_frame.empty()) {
+        return cv::Mat();
+    }
+
     cv::Mat tile(result.resized_frame.size(), CV_8UC3, kBackground);
 
     if (!result.preprocessed_frame.empty() && result.roi_rect.area() > 0) {
@@ -162,15 +149,14 @@ cv::Mat DebugRenderer::buildPreprocessTile(const pipeline::RoadSegmentationResul
         cv::polylines(tile, polygons, true, kHoodMaskColor, 1, cv::LINE_AA);
     }
 
-    return composeTileCard(tile, "ROI + preprocessamento",
-                           {"Seg: " + result.segmentation_mode,
-                            "Blur: " + std::string(config.gaussian_enabled ? "on" : "off"),
-                            "CLAHE: " + std::string(config.clahe_enabled ? "on" : "off"),
-                            "Conf.: " + formatDouble(result.confidence_score, 2),
-                            calibration_status});
+    return tile;
 }
 
-cv::Mat DebugRenderer::buildMaskTile(const pipeline::RoadSegmentationResult &result) const {
+cv::Mat DebugRenderer::renderMaskView(const pipeline::RoadSegmentationResult &result) const {
+    if (result.resized_frame.empty()) {
+        return cv::Mat();
+    }
+
     cv::Mat tile(result.resized_frame.size(), CV_8UC3, kBackground);
     if (!result.mask_frame.empty() && result.roi_rect.area() > 0) {
         cv::Mat mask_color;
@@ -178,13 +164,14 @@ cv::Mat DebugRenderer::buildMaskTile(const pipeline::RoadSegmentationResult &res
         mask_color.copyTo(tile(result.roi_rect));
     }
 
-    return composeTileCard(tile, "Mascara binaria",
-                           {"Area: " + formatDouble(result.mask_area_px, 0) + " px2",
-                            "Largura: " + formatDouble(result.lane_width_px, 1) + " px",
-                            "Score: " + formatDouble(result.confidence_score, 2)});
+    return tile;
 }
 
-cv::Mat DebugRenderer::buildOutputTile(const pipeline::RoadSegmentationResult &result) const {
+cv::Mat DebugRenderer::renderAnnotatedView(const pipeline::RoadSegmentationResult &result) const {
+    if (result.resized_frame.empty()) {
+        return cv::Mat();
+    }
+
     cv::Mat tile = result.resized_frame.clone();
 
     if (!result.road_polygon_points.empty()) {
@@ -219,6 +206,46 @@ cv::Mat DebugRenderer::buildOutputTile(const pipeline::RoadSegmentationResult &r
         cv::rectangle(tile, {2, 2}, {tile.cols - 3, tile.rows - 3}, {0, 0, 255}, 2, cv::LINE_AA);
     }
 
+    return tile;
+}
+
+cv::Mat DebugRenderer::buildOriginalTile(const pipeline::RoadSegmentationResult &result,
+                                         const std::string &source_label) const {
+    cv::Mat tile = renderOriginalOverlayView(result);
+
+    return composeTileCard(tile, "Original",
+                           {source_label,
+                            "ROI: trapezio util",
+                            "Lookahead: FAR/MID/NEAR",
+                            "Capo: " +
+                                std::string(result.hood_mask_polygon_points.empty() ? "off" : "masked")});
+}
+
+cv::Mat DebugRenderer::buildPreprocessTile(const pipeline::RoadSegmentationResult &result,
+                                           const config::LabConfig &config,
+                                           const std::string &calibration_status) const {
+    cv::Mat tile = renderPreprocessView(result);
+
+    return composeTileCard(tile, "ROI + preprocessamento",
+                           {"Seg: " + result.segmentation_mode,
+                            "Blur: " + std::string(config.gaussian_enabled ? "on" : "off"),
+                            "CLAHE: " + std::string(config.clahe_enabled ? "on" : "off"),
+                            "Conf.: " + formatDouble(result.confidence_score, 2),
+                            calibration_status});
+}
+
+cv::Mat DebugRenderer::buildMaskTile(const pipeline::RoadSegmentationResult &result) const {
+    cv::Mat tile = renderMaskView(result);
+
+    return composeTileCard(tile, "Mascara binaria",
+                           {"Area: " + formatDouble(result.mask_area_px, 0) + " px2",
+                            "Largura: " + formatDouble(result.lane_width_px, 1) + " px",
+                            "Score: " + formatDouble(result.confidence_score, 2)});
+}
+
+cv::Mat DebugRenderer::buildOutputTile(const pipeline::RoadSegmentationResult &result) const {
+    cv::Mat tile = renderAnnotatedView(result);
+
     return composeTileCard(tile, "Saida anotada",
                            {"Lane ratio: " + formatDouble(result.lane_center_ratio),
                             "Erro norm.: " + formatDouble(result.steering_error_normalized),
@@ -237,6 +264,28 @@ cv::Mat DebugRenderer::buildOutputTile(const pipeline::RoadSegmentationResult &r
                                                         : "missing"),
                             "Confianca: " + formatDouble(result.confidence_score, 2),
                             "Status: " + std::string(result.lane_found ? "detected" : "missing")});
+}
+
+cv::Mat DebugRenderer::renderOriginalOverlayView(
+    const pipeline::RoadSegmentationResult &result) const {
+    if (result.resized_frame.empty()) {
+        return cv::Mat();
+    }
+
+    cv::Mat tile = result.resized_frame.clone();
+    drawLookaheadOverlay(tile, result);
+    if (!result.roi_polygon_points.empty()) {
+        std::vector<std::vector<cv::Point>> polygons = {result.roi_polygon_points};
+        cv::polylines(tile, polygons, true, kRoiColor, 2, cv::LINE_AA);
+    } else if (result.roi_rect.area() > 0) {
+        cv::rectangle(tile, result.roi_rect, kRoiColor, 2, cv::LINE_AA);
+    }
+    if (!result.hood_mask_polygon_points.empty()) {
+        std::vector<std::vector<cv::Point>> polygons = {result.hood_mask_polygon_points};
+        cv::polylines(tile, polygons, true, kHoodMaskColor, 2, cv::LINE_AA);
+    }
+
+    return tile;
 }
 
 cv::Mat DebugRenderer::composeTileCard(const cv::Mat &image, const std::string &title,

@@ -19,6 +19,8 @@
 #include "services/autonomous_control/AutonomousControlTelemetry.hpp"
 #include "services/road_segmentation/RoadSegmentationTelemetry.hpp"
 #include "services/road_segmentation/VisionRuntimeConfig.hpp"
+#include "services/vision/VisionDebugStream.hpp"
+#include "services/vision/VisionDebugViewRenderer.hpp"
 
 namespace autonomous_car::services {
 namespace {
@@ -26,6 +28,7 @@ namespace {
 namespace rsl = road_segmentation_lab;
 namespace rs = autonomous_car::services::road_segmentation;
 namespace autoctrl = autonomous_car::services::autonomous_control;
+namespace vision = autonomous_car::services::vision;
 
 struct RuntimeState {
     rs::VisionRuntimeConfig vision_config;
@@ -63,6 +66,34 @@ bool shouldPublishNow(double max_fps, std::chrono::steady_clock::time_point now,
     }
 
     return false;
+}
+
+void publishVisionFrames(
+    const vision::VisionDebugViewSet &requested_views,
+    const rs::VisionRuntimeConfig &vision_config,
+    const vision::VisionDebugViewRenderer &renderer,
+    const rsl::pipeline::RoadSegmentationResult &result,
+    const rsl::config::LabConfig &config, const std::string &source_label,
+    const std::string &calibration_status,
+    const autoctrl::AutonomousControlSnapshot &snapshot, std::int64_t timestamp_ms,
+    const RoadSegmentationService::VisionFramePublisher &publisher) {
+    if (!publisher || requested_views.empty()) {
+        return;
+    }
+
+    for (const auto view : vision::allVisionDebugViews()) {
+        if (requested_views.find(view) == requested_views.end()) {
+            continue;
+        }
+
+        cv::Mat frame =
+            renderer.render(view, result, config, source_label, calibration_status, snapshot);
+        const auto payload = vision::buildVisionFrameJson(
+            view, frame, timestamp_ms, vision_config.stream_jpeg_quality);
+        if (payload) {
+            publisher(view, *payload);
+        }
+    }
 }
 
 std::unique_ptr<rsl::pipeline::stages::FrameSource>
@@ -139,12 +170,16 @@ bool loadRuntimeState(const std::string &vision_config_path, RuntimeState &state
 
 RoadSegmentationService::RoadSegmentationService(std::string vision_config_path,
                                                  autoctrl::AutonomousControlService *control_service,
-                                                 TelemetryPublisher publisher,
+                                                 TelemetryPublisher telemetry_publisher,
+                                                 VisionFramePublisher vision_frame_publisher,
+                                                 VisionSubscriptionProvider vision_subscription_provider,
                                                  ControlSink control_sink,
                                                  std::string window_name)
     : vision_config_path_(std::move(vision_config_path)),
       control_service_(control_service),
-      publisher_(std::move(publisher)),
+      telemetry_publisher_(std::move(telemetry_publisher)),
+      vision_frame_publisher_(std::move(vision_frame_publisher)),
+      vision_subscription_provider_(std::move(vision_subscription_provider)),
       control_sink_(std::move(control_sink)),
       window_name_(std::move(window_name)) {}
 
@@ -179,7 +214,7 @@ void RoadSegmentationService::run() {
         }
 
         rsl::pipeline::RoadSegmentationPipeline pipeline(state.segmentation_config);
-        autoctrl::AutonomousControlDebugRenderer renderer;
+        vision::VisionDebugViewRenderer vision_renderer;
 
         bool paused = state.source->isStaticImage();
         bool step_once = true;
@@ -189,7 +224,9 @@ void RoadSegmentationService::run() {
         cv::Mat current_dashboard;
         rsl::pipeline::RoadSegmentationResult current_result;
         autoctrl::AutonomousControlSnapshot current_control_snapshot;
-        auto last_publish = std::chrono::steady_clock::time_point::min();
+        vision::VisionDebugViewSet last_requested_views;
+        auto last_telemetry_publish = std::chrono::steady_clock::time_point::min();
+        auto last_stream_publish = std::chrono::steady_clock::time_point::min();
 
         if (state.vision_config.debug_window_enabled) {
             cv::namedWindow(window_name_, cv::WINDOW_AUTOSIZE);
@@ -197,11 +234,16 @@ void RoadSegmentationService::run() {
         }
 
         while (!stop_requested_.load()) {
+            const vision::VisionDebugViewSet requested_views =
+                vision_subscription_provider_ ? vision_subscription_provider_()
+                                              : vision::VisionDebugViewSet{};
+            const bool vision_requests_changed = requested_views != last_requested_views;
             const bool should_read_static_image =
                 state.source->isStaticImage() && (need_reprocess || current_frame.empty());
             const bool should_read_dynamic_frame =
                 !state.source->isStaticImage() && !need_reprocess &&
                 (!paused || step_once || current_frame.empty());
+            bool processed_frame = false;
 
             if (should_read_static_image || should_read_dynamic_frame) {
                 if (!state.source->read(current_frame) || current_frame.empty()) {
@@ -212,6 +254,7 @@ void RoadSegmentationService::run() {
             }
 
             if (need_reprocess || should_read_static_image || should_read_dynamic_frame) {
+                processed_frame = true;
                 current_result = pipeline.process(current_frame);
                 const auto timestamp_ms = currentTimestampMs();
 
@@ -225,21 +268,22 @@ void RoadSegmentationService::run() {
                 }
 
                 if (state.vision_config.debug_window_enabled) {
-                    current_dashboard = renderer.render(current_result, state.segmentation_config,
-                                                        state.source_label,
-                                                        pipeline.calibrationStatus(),
-                                                        current_control_snapshot);
+                    current_dashboard = vision_renderer.render(
+                        vision::VisionDebugViewId::Dashboard, current_result,
+                        state.segmentation_config, state.source_label,
+                        pipeline.calibrationStatus(), current_control_snapshot);
                 } else {
                     current_dashboard.release();
                 }
 
-                if (publisher_) {
+                if (telemetry_publisher_) {
                     const auto now = std::chrono::steady_clock::now();
-                    if (shouldPublishNow(state.vision_config.telemetry_max_fps, now, last_publish)) {
-                        publisher_(rs::buildRoadSegmentationTelemetryJson(
+                    if (shouldPublishNow(state.vision_config.telemetry_max_fps, now,
+                                         last_telemetry_publish)) {
+                        telemetry_publisher_(rs::buildRoadSegmentationTelemetryJson(
                             current_result, state.source_label, timestamp_ms));
                         if (control_service_) {
-                            publisher_(autoctrl::buildAutonomousControlTelemetryJson(
+                            telemetry_publisher_(autoctrl::buildAutonomousControlTelemetryJson(
                                 current_control_snapshot));
                         }
                     }
@@ -248,6 +292,35 @@ void RoadSegmentationService::run() {
                 step_once = false;
                 need_reprocess = false;
             }
+
+            if (vision_frame_publisher_ && !requested_views.empty() &&
+                !current_result.resized_frame.empty()) {
+                const auto now = std::chrono::steady_clock::now();
+                bool should_publish_stream = false;
+
+                if (vision_requests_changed) {
+                    should_publish_stream = true;
+                    last_stream_publish = now;
+                } else if (processed_frame &&
+                           shouldPublishNow(state.vision_config.stream_max_fps, now,
+                                            last_stream_publish)) {
+                    should_publish_stream = true;
+                }
+
+                if (should_publish_stream) {
+                    const auto stream_timestamp_ms =
+                        current_control_snapshot.timestamp_ms > 0
+                            ? current_control_snapshot.timestamp_ms
+                            : currentTimestampMs();
+                    publishVisionFrames(requested_views, state.vision_config, vision_renderer,
+                                        current_result, state.segmentation_config,
+                                        state.source_label, pipeline.calibrationStatus(),
+                                        current_control_snapshot, stream_timestamp_ms,
+                                        vision_frame_publisher_);
+                }
+            }
+
+            last_requested_views = requested_views;
 
             if (state.vision_config.debug_window_enabled) {
                 if (!window_created) {
@@ -289,7 +362,8 @@ void RoadSegmentationService::run() {
                         need_reprocess = true;
                         current_frame.release();
                         current_dashboard.release();
-                        last_publish = std::chrono::steady_clock::time_point::min();
+                        last_telemetry_publish = std::chrono::steady_clock::time_point::min();
+                        last_stream_publish = std::chrono::steady_clock::time_point::min();
 
                         if (!state.vision_config.debug_window_enabled && window_created) {
                             destroyWindow();
