@@ -5,17 +5,18 @@ Versao focada em controle do veiculo no Raspberry Pi com um pipeline compartilha
 ## O que mudou
 
 - O pipeline de segmentacao agora vem do core compartilhado em `shared/road_segmentation`.
+- O modo autonomo agora usa PID lateral em cima das referencias `near/mid/far` da segmentacao.
 - A visao foi separada em dois arquivos:
   - `config/vision.env`: origem de captura, janela de debug e taxa maxima de telemetria.
   - `config/road_segmentation.env`: parametros `LANE_*` do pipeline.
 - O servidor WebSocket suporta multiplos clientes, com no maximo um controlador ativo e qualquer numero de consumidores de telemetria.
-- A telemetria de segmentacao sai como JSON no mesmo WebSocket com `type: "telemetry.road_segmentation"`.
+- O mesmo WebSocket publica `telemetry.road_segmentation` e `telemetry.autonomous_control`.
 
 ## Perfis de execucao
 
 ### 1. Hardware completo
 
-Usa `wiringPi`, GPIO e segmentacao ao vivo.
+Usa `wiringPi`, GPIO, segmentacao ao vivo e aplicacao real do comando autonomo nos motores/servo.
 
 ```bash
 ./build.sh
@@ -26,7 +27,7 @@ Se `wiringPi` nao estiver instalado, esse binario nao sera gerado.
 
 ### 2. Visao/debug local
 
-Executa WebSocket + segmentacao sem depender de `wiringPi`.
+Executa WebSocket + segmentacao + PID/debug sem depender de `wiringPi`.
 
 ```bash
 ./build.sh
@@ -39,7 +40,7 @@ Se o binario de hardware nao existir, `./start.sh` faz fallback automatico para 
 
 ### `config/autonomous_car.env`
 
-Mantem apenas configuracoes de hardware, direcao e modo de conducao:
+Mantem configuracoes de hardware, direcao, modo de conducao e tuning do controlador autonomo:
 
 - `MOTOR_COMMAND_TIMEOUT_MS`
 - `STEERING_SENSITIVITY`
@@ -50,6 +51,18 @@ Mantem apenas configuracoes de hardware, direcao e modo de conducao:
 - `MOTOR_LEFT_INVERTED`
 - `MOTOR_RIGHT_INVERTED`
 - `DRIVING_MODE`
+- `AUTONOMOUS_PID_KP`
+- `AUTONOMOUS_PID_KI`
+- `AUTONOMOUS_PID_KD`
+- `AUTONOMOUS_PID_OUTPUT_LIMIT`
+- `AUTONOMOUS_PREVIEW_NEAR_WEIGHT`
+- `AUTONOMOUS_PREVIEW_MID_WEIGHT`
+- `AUTONOMOUS_PREVIEW_FAR_WEIGHT`
+- `AUTONOMOUS_MAX_STEERING_DELTA_PER_UPDATE`
+- `AUTONOMOUS_MIN_CONFIDENCE`
+- `AUTONOMOUS_LANE_LOSS_TIMEOUT_MS`
+
+Detalhes do controlador e do painel local em `docs/pid_control.md`.
 
 ### `config/vision.env`
 
@@ -87,7 +100,12 @@ Se a fonte local falhar, o servico tenta fallback para a camera configurada.
 
 ## Debug local
 
-Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o servico abre um dashboard com o renderer do laboratorio.
+Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o servico abre um dashboard expandido:
+
+- painel 2x2 da segmentacao compartilhada
+- card lateral de controle autonomo com estado, erro composto e termos `P/I/D`
+- indicador visual do comando de direção
+- mapa superior sintetico com referencias `near/mid/far` e trajetoria prevista
 
 Atalhos:
 
@@ -122,8 +140,17 @@ Exemplos:
 client:control
 command:manual:forward
 command:manual:steering=0.25
+command:autonomous:start
+command:autonomous:stop
 config:driving.mode=autonomous
 ```
+
+Semantica operacional:
+
+- `config:driving.mode=manual|autonomous` troca o modo de conducao.
+- No modo `manual`, apenas comandos `command:manual:*` sao aceitos.
+- No modo `autonomous`, o carro fica parado ate receber `command:autonomous:start`.
+- `command:autonomous:stop`, troca de modo, encerramento do servico ou perda de pista acima do timeout executam parada segura.
 
 Telemetria publicada:
 
@@ -157,6 +184,32 @@ Telemetria publicada:
 }
 ```
 
+```json
+{
+  "type": "telemetry.autonomous_control",
+  "timestamp_ms": 1710000000000,
+  "driving_mode": "autonomous",
+  "autonomous_started": true,
+  "tracking_state": "tracking",
+  "stop_reason": "none",
+  "fail_safe_active": false,
+  "lane_available": true,
+  "confidence_ok": true,
+  "confidence_score": 0.87,
+  "preview_error": 0.08,
+  "steering_command": 0.06,
+  "motion_command": "forward",
+  "pid": {
+    "error": 0.08,
+    "p": 0.04,
+    "i": 0.01,
+    "d": 0.01,
+    "raw_output": 0.06,
+    "output": 0.06
+  }
+}
+```
+
 ## Build e testes
 
 ```bash
@@ -170,6 +223,6 @@ No ambiente sem `wiringPi`, os testes e o binario `autonomous_car_v3_vision_debu
 
 ## Limitacoes desta etapa
 
-- a segmentacao apenas observa e publica telemetria
-- nao ha resposta automatica de direcao nem integracao com PID
-- o frame de debug nao e enviado pelo WebSocket; apenas metricas e estado
+- o controle autonomo desta fase atua apenas na direção lateral; o movimento continua como frente/parado
+- o `vision_debug` nao aciona GPIO; ele apenas calcula PID, painel local e telemetria
+- o frame de debug nao e enviado pelo WebSocket; apenas metricas, estado e trajetoria projetada

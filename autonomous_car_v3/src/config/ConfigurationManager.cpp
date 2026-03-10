@@ -284,6 +284,103 @@ bool ConfigurationManager::applySetting(const std::string &key, const std::strin
         return true;
     }
 
+    if (iequals(key, "AUTONOMOUS_PID_KP") || iequals(key, "autonomous.pid.kp")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.autonomous_control.pid_kp = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_PID_KI") || iequals(key, "autonomous.pid.ki")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.autonomous_control.pid_ki = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_PID_KD") || iequals(key, "autonomous.pid.kd")) {
+        auto parsed = parseDouble(value);
+        if (!parsed) {
+            return false;
+        }
+        current_.autonomous_control.pid_kd = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_PID_OUTPUT_LIMIT") ||
+        iequals(key, "autonomous.pid.output_limit")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed <= 0.0) {
+            return false;
+        }
+        current_.autonomous_control.pid_output_limit = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_PREVIEW_NEAR_WEIGHT") ||
+        iequals(key, "autonomous.preview.near_weight")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed < 0.0) {
+            return false;
+        }
+        current_.autonomous_control.preview_near_weight = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_PREVIEW_MID_WEIGHT") ||
+        iequals(key, "autonomous.preview.mid_weight")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed < 0.0) {
+            return false;
+        }
+        current_.autonomous_control.preview_mid_weight = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_PREVIEW_FAR_WEIGHT") ||
+        iequals(key, "autonomous.preview.far_weight")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed < 0.0) {
+            return false;
+        }
+        current_.autonomous_control.preview_far_weight = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_MAX_STEERING_DELTA_PER_UPDATE") ||
+        iequals(key, "autonomous.max_steering_delta_per_update")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed < 0.0) {
+            return false;
+        }
+        current_.autonomous_control.max_steering_delta_per_update = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_MIN_CONFIDENCE") ||
+        iequals(key, "autonomous.min_confidence")) {
+        auto parsed = parseDouble(value);
+        if (!parsed || *parsed < 0.0 || *parsed > 1.0) {
+            return false;
+        }
+        current_.autonomous_control.min_confidence = *parsed;
+        return true;
+    }
+
+    if (iequals(key, "AUTONOMOUS_LANE_LOSS_TIMEOUT_MS") ||
+        iequals(key, "autonomous.lane_loss_timeout_ms")) {
+        auto parsed = parseInt(value);
+        if (!parsed || *parsed < 0) {
+            return false;
+        }
+        current_.autonomous_control.lane_loss_timeout_ms = *parsed;
+        return true;
+    }
+
     if (iequals(key, "STEERING_PID_KP") || iequals(key, "steering.pid.kp") ||
         iequals(key, "STEERING_PID_KI") || iequals(key, "steering.pid.ki") ||
         iequals(key, "STEERING_PID_KD") || iequals(key, "steering.pid.kd") ||

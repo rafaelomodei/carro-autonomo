@@ -4,6 +4,7 @@
 #include <string>
 
 #include "common/DrivingMode.hpp"
+#include "services/autonomous_control/AutonomousControlTypes.hpp"
 
 namespace autonomous_car::config {
 
@@ -26,6 +27,7 @@ struct RuntimeConfigSnapshot {
     bool motor_right_inverted{true};
     int motor_command_timeout_ms{150};
     DrivingMode driving_mode{DrivingMode::Manual};
+    services::autonomous_control::AutonomousControlConfig autonomous_control;
 };
 
 class ConfigurationManager {
