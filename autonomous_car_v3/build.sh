@@ -9,3 +9,13 @@ cd "${BUILD_DIR}"
 
 cmake ..
 cmake --build .
+
+if [[ -x "${BUILD_DIR}/autonomous_car_v3" ]]; then
+  echo "Binario de hardware disponivel: ${BUILD_DIR}/autonomous_car_v3"
+else
+  echo "Binario de hardware nao foi gerado (wiringPi ausente)."
+fi
+
+if [[ -x "${BUILD_DIR}/autonomous_car_v3_vision_debug" ]]; then
+  echo "Binario de visao/debug disponivel: ${BUILD_DIR}/autonomous_car_v3_vision_debug"
+fi

@@ -6,10 +6,12 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cmath>
 #include <array>
 #include <atomic>
 #include <cctype>
+#include <cerrno>
+#include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -34,7 +36,14 @@ std::string trim(const std::string &value) {
     return value.substr(begin, end - begin + 1);
 }
 
-enum class MessageChannel { Command, Config, Unknown };
+std::string toLower(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+enum class MessageChannel { Client, Command, Config, Unknown };
 
 struct ParsedMessage {
     MessageChannel channel{MessageChannel::Unknown};
@@ -57,13 +66,17 @@ std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
         return parsed;
     }
 
-    auto channel_token = trim(trimmed.substr(0, delimiter_pos));
-    std::string normalized_channel = channel_token;
-    std::transform(normalized_channel.begin(), normalized_channel.end(), normalized_channel.begin(),
-                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    auto channel_token = toLower(trim(trimmed.substr(0, delimiter_pos)));
     auto remainder = trim(trimmed.substr(delimiter_pos + 1));
 
-    if (normalized_channel == "command") {
+    if (channel_token == "client") {
+        ParsedMessage parsed;
+        parsed.channel = MessageChannel::Client;
+        parsed.key = toLower(remainder);
+        return parsed;
+    }
+
+    if (channel_token == "command") {
         ParsedMessage parsed;
         parsed.channel = MessageChannel::Command;
         auto equals_pos = remainder.find('=');
@@ -96,11 +109,12 @@ std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
         return parsed;
     }
 
-    if (normalized_channel == "config") {
+    if (channel_token == "config") {
         auto equals_pos = remainder.find('=');
         if (equals_pos == std::string::npos) {
             return std::nullopt;
         }
+
         ParsedMessage parsed;
         parsed.channel = MessageChannel::Config;
         parsed.key = trim(remainder.substr(0, equals_pos));
@@ -194,6 +208,7 @@ private:
                    (static_cast<uint32_t>(block[i * 4 + 2]) << 8) |
                    static_cast<uint32_t>(block[i * 4 + 3]);
         }
+
         for (int i = 16; i < 80; ++i) {
             w[i] = rotateLeft(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
         }
@@ -220,6 +235,7 @@ private:
                 f = b ^ c ^ d;
                 k = 0xCA62C1D6;
             }
+
             uint32_t temp = rotateLeft(a, 5) + f + e + k + w[i];
             e = d;
             d = c;
@@ -272,7 +288,6 @@ std::string base64Encode(const std::string &input) {
         uint32_t octet_c = remaining > 2 ? static_cast<unsigned char>(input[index++]) : 0;
 
         uint32_t triple = (octet_a << 16) | (octet_b << 8) | octet_c;
-
         encoded.push_back(table[(triple >> 18) & 0x3F]);
         encoded.push_back(table[(triple >> 12) & 0x3F]);
         encoded.push_back(remaining > 1 ? table[(triple >> 6) & 0x3F] : '=');
@@ -299,11 +314,24 @@ bool recvAll(int socket_fd, void *buffer, size_t length) {
     return true;
 }
 
+bool sendAll(int socket_fd, const void *buffer, size_t length) {
+    const auto *bytes = static_cast<const unsigned char *>(buffer);
+    size_t sent_total = 0;
+    while (sent_total < length) {
+        const ssize_t sent = send(socket_fd, bytes + sent_total, length - sent_total, 0);
+        if (sent <= 0) {
+            return false;
+        }
+        sent_total += static_cast<size_t>(sent);
+    }
+    return true;
+}
+
 std::optional<std::string> readHttpRequest(int client_fd) {
     std::string request;
     std::array<char, 1024> buffer{};
     while (true) {
-        ssize_t bytes = recv(client_fd, buffer.data(), buffer.size(), 0);
+        const ssize_t bytes = recv(client_fd, buffer.data(), buffer.size(), 0);
         if (bytes <= 0) {
             return std::nullopt;
         }
@@ -341,9 +369,8 @@ bool sendHandshakeResponse(int client_fd, const std::string &accept_key) {
              << "Upgrade: websocket\r\n"
              << "Connection: Upgrade\r\n"
              << "Sec-WebSocket-Accept: " << accept_key << "\r\n\r\n";
-    auto response_str = response.str();
-    ssize_t sent = send(client_fd, response_str.data(), response_str.size(), 0);
-    return sent == static_cast<ssize_t>(response_str.size());
+    const auto response_str = response.str();
+    return sendAll(client_fd, response_str.data(), response_str.size());
 }
 
 std::optional<std::string> readTextFrame(int client_fd) {
@@ -352,20 +379,16 @@ std::optional<std::string> readTextFrame(int client_fd) {
         return std::nullopt;
     }
 
-    bool fin = (header[0] & 0x80) != 0;
-    unsigned char opcode = header[0] & 0x0F;
-    bool masked = (header[1] & 0x80) != 0;
+    const bool fin = (header[0] & 0x80) != 0;
+    const unsigned char opcode = header[0] & 0x0F;
+    const bool masked = (header[1] & 0x80) != 0;
     uint64_t payload_length = header[1] & 0x7F;
 
-    if (!fin) {
+    if (!fin || !masked) {
         return std::nullopt;
     }
 
     if (opcode == 0x8) {
-        return std::nullopt;
-    }
-
-    if (!masked) {
         return std::nullopt;
     }
 
@@ -401,7 +424,8 @@ std::optional<std::string> readTextFrame(int client_fd) {
     }
 
     for (uint64_t i = 0; i < payload_length; ++i) {
-        payload[static_cast<size_t>(i)] = payload[static_cast<size_t>(i)] ^ mask_key[i % 4];
+        payload[static_cast<size_t>(i)] =
+            payload[static_cast<size_t>(i)] ^ mask_key[i % 4];
     }
 
     if (opcode != 0x1) {
@@ -411,59 +435,270 @@ std::optional<std::string> readTextFrame(int client_fd) {
     return payload;
 }
 
-void sendCloseFrame(int client_fd) {
+bool sendTextFrame(int client_fd, const std::string &payload) {
+    std::vector<unsigned char> frame;
+    frame.reserve(payload.size() + 10);
+    frame.push_back(0x81);
+
+    const size_t payload_length = payload.size();
+    if (payload_length <= 125) {
+        frame.push_back(static_cast<unsigned char>(payload_length));
+    } else if (payload_length <= 0xFFFFu) {
+        frame.push_back(126);
+        frame.push_back(static_cast<unsigned char>((payload_length >> 8) & 0xFFu));
+        frame.push_back(static_cast<unsigned char>(payload_length & 0xFFu));
+    } else {
+        frame.push_back(127);
+        for (int shift = 56; shift >= 0; shift -= 8) {
+            frame.push_back(static_cast<unsigned char>((payload_length >> shift) & 0xFFu));
+        }
+    }
+
+    frame.insert(frame.end(), payload.begin(), payload.end());
+    return sendAll(client_fd, frame.data(), frame.size());
+}
+
+bool sendCloseFrame(int client_fd) {
     const unsigned char frame[2] = {0x88, 0x00};
-    send(client_fd, frame, sizeof(frame), 0);
+    return sendAll(client_fd, frame, sizeof(frame));
+}
+
+std::optional<autonomous_car::services::websocket::ClientRole> parseClientRole(
+    const std::string &value) {
+    if (value == "control") {
+        return autonomous_car::services::websocket::ClientRole::Control;
+    }
+    if (value == "telemetry") {
+        return autonomous_car::services::websocket::ClientRole::Telemetry;
+    }
+    return std::nullopt;
 }
 
 } // namespace
 
 namespace autonomous_car::services {
 
-WebSocketServer::WebSocketServer(const std::string &host, int port, controllers::CommandDispatcher &dispatcher,
-                                 ConfigUpdateHandler config_handler, DrivingModeProvider mode_provider)
+WebSocketServer::WebSocketServer(const std::string &host, int port,
+                                 controllers::CommandDispatcher &dispatcher,
+                                 ConfigUpdateHandler config_handler,
+                                 DrivingModeProvider mode_provider)
     : host_{host},
       port_{port},
       dispatcher_{dispatcher},
       config_handler_{std::move(config_handler)},
       driving_mode_provider_{std::move(mode_provider)},
       running_{false},
-      server_fd_{-1},
-      active_client_fd_{-1} {}
+      server_fd_{-1} {}
 
-WebSocketServer::~WebSocketServer() {
-    stop();
-}
+WebSocketServer::~WebSocketServer() { stop(); }
 
 void WebSocketServer::start() {
     if (running_.exchange(true)) {
         return;
     }
+
     server_thread_ = std::thread(&WebSocketServer::run, this);
 }
 
 void WebSocketServer::stop() {
-    if (!running_.exchange(false)) {
-        return;
+    const bool was_running = running_.exchange(false);
+
+    if (was_running) {
+        const int fd = server_fd_.exchange(-1);
+        if (fd >= 0) {
+            shutdown(fd, SHUT_RDWR);
+            close(fd);
+        }
+
+        const auto sessions = snapshotSessions();
+        for (const auto &session : sessions) {
+            shutdownSession(session, true);
+        }
     }
-    int client_fd = active_client_fd_.exchange(-1);
-    if (client_fd >= 0) {
-        shutdown(client_fd, SHUT_RDWR);
-    }
-    int fd = server_fd_.load();
-    if (fd >= 0) {
-        shutdown(fd, SHUT_RDWR);
-    }
+
     if (server_thread_.joinable()) {
         server_thread_.join();
     }
+
+    for (auto &thread : client_threads_) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+    client_threads_.clear();
+}
+
+void WebSocketServer::broadcastText(const std::string &payload) {
+    const auto sessions = snapshotSessions();
+    for (const auto &session : sessions) {
+        if (!session) {
+            continue;
+        }
+
+        std::lock_guard<std::mutex> lock(session->send_mutex);
+        if (!session->alive.load()) {
+            continue;
+        }
+
+        if (!sendTextFrame(session->fd, payload)) {
+            session->alive.store(false);
+            shutdown(session->fd, SHUT_RDWR);
+        }
+    }
+}
+
+std::vector<WebSocketServer::ClientSessionPtr> WebSocketServer::snapshotSessions() const {
+    std::lock_guard<std::mutex> lock(clients_mutex_);
+    std::vector<ClientSessionPtr> sessions;
+    sessions.reserve(this->sessions_.size());
+    for (const auto &[_, session] : this->sessions_) {
+        sessions.push_back(session);
+    }
+    return sessions;
+}
+
+bool WebSocketServer::assignRequestedRole(const ClientSessionPtr &session, ClientRole requested_role) {
+    if (!session) {
+        return false;
+    }
+    return client_registry_.requestRole(session->id, requested_role);
+}
+
+bool WebSocketServer::ensureControllerRole(const ClientSessionPtr &session) {
+    if (!session) {
+        return false;
+    }
+    return client_registry_.ensureController(session->id);
+}
+
+void WebSocketServer::removeSession(const ClientSessionPtr &session) {
+    std::lock_guard<std::mutex> lock(clients_mutex_);
+    if (!session) {
+        return;
+    }
+
+    sessions_.erase(session->id);
+    client_registry_.removeSession(session->id);
+}
+
+void WebSocketServer::shutdownSession(const ClientSessionPtr &session, bool send_close_frame) {
+    if (!session) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(session->send_mutex);
+    if (!session->alive.exchange(false)) {
+        return;
+    }
+
+    if (send_close_frame) {
+        sendCloseFrame(session->fd);
+    }
+    shutdown(session->fd, SHUT_RDWR);
+}
+
+void WebSocketServer::handleClient(const ClientSessionPtr &session) {
+    while (running_.load() && session->alive.load()) {
+        auto payload_opt = readTextFrame(session->fd);
+        if (!payload_opt) {
+            break;
+        }
+
+        const auto parsed_message = parseInboundMessage(*payload_opt);
+        if (!parsed_message) {
+            std::cerr << "Mensagem recebida em formato invalido: " << *payload_opt << std::endl;
+            continue;
+        }
+
+        if (parsed_message->channel == MessageChannel::Client) {
+            const auto requested_role = parseClientRole(parsed_message->key);
+            if (!requested_role) {
+                std::cerr << "Papel de cliente desconhecido: " << parsed_message->key << std::endl;
+                continue;
+            }
+
+            if (!assignRequestedRole(session, *requested_role)) {
+                std::cerr << "Papel control indisponivel; cliente mantido como telemetry."
+                          << std::endl;
+            }
+            continue;
+        }
+
+        if ((parsed_message->channel == MessageChannel::Command ||
+             parsed_message->channel == MessageChannel::Config) &&
+            !ensureControllerRole(session)) {
+            std::cerr << "Cliente sem permissao de controle; mensagem ignorada." << std::endl;
+            continue;
+        }
+
+        if (parsed_message->channel == MessageChannel::Command) {
+            const auto normalized_value = parseCommandValue(parsed_message->value);
+            if (parsed_message->value && !normalized_value) {
+                std::cerr << "Valor de comando invalido: " << *parsed_message->value
+                          << " para comando " << parsed_message->key << std::endl;
+                continue;
+            }
+
+            CommandSource command_source = CommandSource::Manual;
+            if (parsed_message->source_token) {
+                const auto parsed_source = commandSourceFromString(*parsed_message->source_token);
+                if (!parsed_source) {
+                    std::cerr << "Origem de comando desconhecida: "
+                              << *parsed_message->source_token << std::endl;
+                    continue;
+                }
+                command_source = *parsed_source;
+            }
+
+            if (driving_mode_provider_) {
+                const auto current_mode = driving_mode_provider_();
+                if (!isSourceCompatible(command_source, current_mode)) {
+                    std::cerr << "Comando " << parsed_message->key << " ignorado. Origem "
+                              << toString(command_source) << " nao permitida no modo "
+                              << toString(current_mode) << std::endl;
+                    continue;
+                }
+            }
+
+            const bool handled = dispatcher_.dispatch(parsed_message->key, normalized_value);
+            if (!handled) {
+                std::cerr << "Comando desconhecido recebido: " << parsed_message->key
+                          << std::endl;
+            }
+            continue;
+        }
+
+        if (parsed_message->channel == MessageChannel::Config) {
+            if (!parsed_message->value) {
+                std::cerr << "Mensagem de configuracao sem valor." << std::endl;
+                continue;
+            }
+
+            if (!config_handler_) {
+                std::cerr << "Handler de configuracao nao definido." << std::endl;
+                continue;
+            }
+
+            if (!config_handler_(parsed_message->key, *parsed_message->value)) {
+                std::cerr << "Falha ao aplicar configuracao: " << parsed_message->key
+                          << "=" << *parsed_message->value << std::endl;
+            }
+            continue;
+        }
+
+        std::cerr << "Canal de mensagem desconhecido: " << *payload_opt << std::endl;
+    }
+
+    shutdownSession(session, true);
+    close(session->fd);
+    removeSession(session);
 }
 
 void WebSocketServer::run() {
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    const int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-        std::cerr << "Failed to create socket" << std::endl;
-        running_ = false;
+        std::cerr << "Falha ao criar socket" << std::endl;
+        running_.store(false);
         return;
     }
 
@@ -478,134 +713,63 @@ void WebSocketServer::run() {
     address.sin_port = htons(static_cast<uint16_t>(port_));
 
     if (bind(server_fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) < 0) {
-        std::cerr << "Failed to bind socket" << std::endl;
+        std::cerr << "Falha ao fazer bind no socket" << std::endl;
         close(server_fd);
-        running_ = false;
+        server_fd_.store(-1);
+        running_.store(false);
         return;
     }
 
-    if (listen(server_fd, 1) < 0) {
-        std::cerr << "Failed to listen on socket" << std::endl;
+    if (listen(server_fd, SOMAXCONN) < 0) {
+        std::cerr << "Falha ao colocar socket em listen" << std::endl;
         close(server_fd);
-        running_ = false;
+        server_fd_.store(-1);
+        running_.store(false);
         return;
     }
 
-    while (running_) {
+    while (running_.load()) {
         sockaddr_in client_address{};
         socklen_t client_len = sizeof(client_address);
-        int client_fd = accept(server_fd, reinterpret_cast<sockaddr *>(&client_address), &client_len);
+        const int client_fd =
+            accept(server_fd, reinterpret_cast<sockaddr *>(&client_address), &client_len);
         if (client_fd < 0) {
-            if (running_) {
-                std::cerr << "Failed to accept connection" << std::endl;
+            if (running_.load() && errno != EINTR) {
+                std::cerr << "Falha ao aceitar conexao" << std::endl;
             }
             continue;
         }
 
-        active_client_fd_.store(client_fd);
-
-        auto request_opt = readHttpRequest(client_fd);
+        const auto request_opt = readHttpRequest(client_fd);
         if (!request_opt) {
             close(client_fd);
-            active_client_fd_.store(-1);
             continue;
         }
 
-        auto key_opt = extractHeader(*request_opt, "Sec-WebSocket-Key");
+        const auto key_opt = extractHeader(*request_opt, "Sec-WebSocket-Key");
         if (!key_opt) {
             close(client_fd);
-            active_client_fd_.store(-1);
             continue;
         }
 
-        auto accept_key = computeAcceptKey(*key_opt);
+        const auto accept_key = computeAcceptKey(*key_opt);
         if (!sendHandshakeResponse(client_fd, accept_key)) {
             close(client_fd);
-            active_client_fd_.store(-1);
             continue;
         }
 
-        while (running_) {
-            auto payload_opt = readTextFrame(client_fd);
-            if (!payload_opt) {
-                break;
-            }
+        auto session = std::make_shared<ClientSession>();
+        session->id = next_session_id_.fetch_add(1);
+        session->fd = client_fd;
 
-            auto message = *payload_opt;
-            if (message == "ping") {
-                continue;
-            }
-            auto parsed_message = parseInboundMessage(message);
-            if (!parsed_message) {
-                std::cerr << "Mensagem recebida em formato inválido: " << message << std::endl;
-                continue;
-            }
-
-            if (parsed_message->channel == MessageChannel::Command) {
-                auto normalized_value = parseCommandValue(parsed_message->value);
-                if (parsed_message->value && !normalized_value) {
-                    std::cerr << "Valor de comando inválido: " << *parsed_message->value
-                              << " para comando " << parsed_message->key << std::endl;
-                    continue;
-                }
-
-                CommandSource command_source = CommandSource::Manual;
-                if (parsed_message->source_token) {
-                    auto parsed_source = commandSourceFromString(*parsed_message->source_token);
-                    if (!parsed_source) {
-                        std::cerr << "Origem de comando desconhecida: " << *parsed_message->source_token
-                                  << " para comando " << parsed_message->key << std::endl;
-                        continue;
-                    }
-                    command_source = *parsed_source;
-                }
-
-                if (driving_mode_provider_) {
-                    auto current_mode = driving_mode_provider_();
-                    if (!isSourceCompatible(command_source, current_mode)) {
-                        std::cerr << "Comando " << parsed_message->key
-                                  << " ignorado. Origem " << toString(command_source)
-                                  << " não permitida no modo " << toString(current_mode) << std::endl;
-                        continue;
-                    }
-                }
-
-                bool handled = dispatcher_.dispatch(parsed_message->key, normalized_value);
-                if (handled) {
-                    std::cout << "Comando aceito: " << parsed_message->key << std::endl;
-                } else {
-                    std::cerr << "Comando desconhecido recebido: " << parsed_message->key << std::endl;
-                }
-                continue;
-            }
-
-            if (parsed_message->channel == MessageChannel::Config) {
-                if (!parsed_message->value) {
-                    std::cerr << "Mensagem de configuração sem valor: " << message << std::endl;
-                    continue;
-                }
-                if (!config_handler_) {
-                    std::cerr << "Handler de configuração não definido para mensagem: " << message << std::endl;
-                    continue;
-                }
-                bool updated = config_handler_(parsed_message->key, *parsed_message->value);
-                if (!updated) {
-                    std::cerr << "Falha ao aplicar configuração: " << parsed_message->key
-                              << "=" << *parsed_message->value << std::endl;
-                }
-                continue;
-            }
-
-            std::cerr << "Canal de mensagem desconhecido: " << message << std::endl;
+        {
+            std::lock_guard<std::mutex> lock(clients_mutex_);
+            sessions_[session->id] = session;
+            client_registry_.addSession(session->id);
         }
 
-        sendCloseFrame(client_fd);
-        close(client_fd);
-        active_client_fd_.store(-1);
+        client_threads_.emplace_back(&WebSocketServer::handleClient, this, session);
     }
-
-    close(server_fd);
-    server_fd_.store(-1);
 }
 
 } // namespace autonomous_car::services
