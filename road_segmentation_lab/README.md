@@ -1,6 +1,6 @@
 # Road Segmentation Lab
 
-Protótipo standalone em **C++17 + OpenCV** para validar a segmentação da via do carro antes da integração no `autonomous_car_v3`.
+Aplicacao standalone em **C++17 + OpenCV** para validar a segmentacao da via do carro usando o mesmo core compartilhado consumido pelo `autonomous_car_v3`.
 
 ## Objetivo
 
@@ -20,6 +20,8 @@ Protótipo standalone em **C++17 + OpenCV** para validar a segmentação da via 
 ```bash
 ./build.sh
 ```
+
+O laboratorio continua standalone, mas agora compila o core compartilhado em `../shared/road_segmentation`.
 
 ## Execução
 

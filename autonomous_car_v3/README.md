@@ -1,123 +1,175 @@
 # Autonomous Car v3
 
-Esta é a terceira versão do projeto do carro autônomo, focada no controle dos motores utilizando a biblioteca [WiringPi](https://github.com/WiringPi/WiringPi) e em um servidor WebSocket leve para receber comandos remotos. O objetivo é permitir o controle básico de movimentação (frente, ré, esquerda, direita e parada), além do ajuste da direção via servo motor.
+Versao focada em controle do veiculo no Raspberry Pi com um pipeline compartilhado de segmentacao de estrada, debug local e telemetria via WebSocket.
 
-## Tecnologias utilizadas
+## O que mudou
 
-- **C++17**
-- **WiringPi** para controle das GPIOs
-- Servidor WebSocket próprio baseado na especificação RFC 6455
-- Padrão de projeto **Command** para desacoplar os comandos das ações sobre o hardware
+- O pipeline de segmentacao agora vem do core compartilhado em `shared/road_segmentation`.
+- A visao foi separada em dois arquivos:
+  - `config/vision.env`: origem de captura, janela de debug e taxa maxima de telemetria.
+  - `config/road_segmentation.env`: parametros `LANE_*` do pipeline.
+- O servidor WebSocket suporta multiplos clientes, com no maximo um controlador ativo e qualquer numero de consumidores de telemetria.
+- A telemetria de segmentacao sai como JSON no mesmo WebSocket com `type: "telemetry.road_segmentation"`.
 
-## Estrutura de pastas
+## Perfis de execucao
 
-```
-autonomous_car_v3/
-├── src/
-│   ├── commands/          # comandos do padrão Command (headers e fontes)
-│   ├── controllers/       # controladores de motor e direção
-│   ├── services/          # servidor WebSocket
-│   └── main.cpp
-├── build.sh
-├── start.sh
-└── CMakeLists.txt
-```
+### 1. Hardware completo
 
-## GPIO utilizadas
-
-| Pino GPIO | Função                           |
-|-----------|----------------------------------|
-| `26`      | Motor esquerdo – sentido frente  |
-| `20`      | Motor esquerdo – sentido ré      |
-| `19`      | Motor direito – sentido frente   |
-| `16`      | Motor direito – sentido ré       |
-| `13`      | Servo da direção (PWM)           |
-
-> ⚠️ Os pinos utilizam a numeração BCM por meio de `wiringPiSetupGpio()`. Ajuste-os conforme o seu hardware.
-
-## Dependências
-
-- `cmake`
-- `g++` (compatível com C++17)
-- Biblioteca `wiringPi`
-
-## Como compilar
+Usa `wiringPi`, GPIO e segmentacao ao vivo.
 
 ```bash
 ./build.sh
-```
-
-O script cria uma pasta `build/`, executa o `cmake` e, em seguida, compila o projeto.
-
-## Como executar
-
-```bash
 ./start.sh
 ```
 
-O servidor WebSocket será iniciado em `ws://0.0.0.0:8080`. Envie mensagens de texto para os canais abaixo:
+Se `wiringPi` nao estiver instalado, esse binario nao sera gerado.
 
-- `command:<origem>:<acao>` – controla o carro e informa a origem do comando. Exemplos:
-  - `command:manual:forward`
-  - `command:manual:left`
-  - `command:manual:center`
-  - `command:manual:throttle=75` (valor normalizado: `-100` a `100` ou `-1.0` a `1.0`)
-  - `command:autonomous:steering=-0.4`
-- `config:<chave>=<valor>` – ajusta parâmetros em tempo de execução (por exemplo `config:motor.command_timeout_ms=200`).
+### 2. Visao/debug local
 
-Se a origem não for informada o servidor assume que o comando veio da pilotagem manual. Quando o carro estiver no modo autônomo, comandos manuais são ignorados e vice-versa – isso evita que origens conflitantes disputem o controle.
+Executa WebSocket + segmentacao sem depender de `wiringPi`.
 
-Comandos discretos de direção (`left`/`right`) deslocam o alvo apenas um incremento por acionamento (`STEERING_COMMAND_STEP`).
-Pressione continuamente para acumular o giro até atingir o limite desejado.
+```bash
+./build.sh
+./start.sh --vision-debug
+```
 
-Os comandos podem ser disparados rapidamente em sequência. Os motores funcionam de forma binária (apenas frente, ré ou parado) e interrompem o movimento automaticamente quando novas ordens deixam de chegar por mais tempo que o limite configurado.
+Se o binario de hardware nao existir, `./start.sh` faz fallback automatico para este perfil.
 
-### Modos de condução e direção
+## Arquivos de configuracao
 
-O veículo pode operar em dois modos:
+### `config/autonomous_car.env`
 
-- **Manual (padrão):** toda a direção é aplicada diretamente conforme os comandos recebidos, utilizando apenas o fator de sensibilidade configurado para limitar o ângulo máximo. Nenhuma correção via PID acontece nesta versão – o módulo foi mantido no código, mas marcado como obsoleto até que o pipeline de correção seja integrado.
-- **Autonomous:** os comandos são aceitos apenas quando enviados com a origem `autonomous`. A interpretação e a suavização seguem exatamente o mesmo fluxo do modo manual; o subsistema de PID continua desativado até que o sistema autônomo passe a enviar correções próprias.
+Mantem apenas configuracoes de hardware, direcao e modo de conducao:
 
-O modo ativo pode ser definido no arquivo `.env` e alterado em tempo de execução pelo canal `config` (`config:driving.mode=manual`).
+- `MOTOR_COMMAND_TIMEOUT_MS`
+- `STEERING_SENSITIVITY`
+- `STEERING_COMMAND_STEP`
+- `STEERING_CENTER_ANGLE`
+- `STEERING_LEFT_LIMIT_DEGREES`
+- `STEERING_RIGHT_LIMIT_DEGREES`
+- `MOTOR_LEFT_INVERTED`
+- `MOTOR_RIGHT_INVERTED`
+- `DRIVING_MODE`
 
-### Parâmetros de configuração
+### `config/vision.env`
 
-Os arquivos `.env` (e o canal `config`) aceitam os parâmetros abaixo para calibrar a dinâmica do carro:
+- `VISION_SOURCE_MODE=camera|video|image`
+- `VISION_SOURCE_PATH`
+- `VISION_CAMERA_INDEX`
+- `VISION_DEBUG_WINDOW_ENABLED`
+- `VISION_TELEMETRY_MAX_FPS`
+- `VISION_SEGMENTATION_CONFIG_PATH`
 
-| Chave | Descrição |
-|-------|-----------|
-| `MOTOR_COMMAND_TIMEOUT_MS` | Tempo máximo (ms) sem novos comandos antes de parar os motores |
-| `STEERING_SENSITIVITY` | Controla o quão responsiva é a direção (multiplicador aplicado ao comando) |
-| `STEERING_COMMAND_STEP` | Incremento aplicado a cada comando `left`/`right` (0–1) |
-| `STEERING_CENTER_ANGLE` | Define a posição neutra (em graus) aplicada no boot |
-| `STEERING_LEFT_LIMIT_DEGREES`, `STEERING_RIGHT_LIMIT_DEGREES` | Limite (em graus) para cada lado em relação ao centro |
-| `MOTOR_LEFT_INVERTED`, `MOTOR_RIGHT_INVERTED` | Ajustam a polaridade física de cada motor |
-| `DRIVING_MODE` | Define se o carro inicia em `manual` ou `autonomous` |
+Defaults:
 
-Os parâmetros `STEERING_PID_*` foram desativados temporariamente. Eles permanecem documentados apenas como referência histórica; sempre que forem informados via arquivo ou WebSocket o sistema irá registrá-los como obsoletos e ignorará os valores.
+```env
+VISION_SOURCE_MODE=camera
+VISION_CAMERA_INDEX=0
+VISION_DEBUG_WINDOW_ENABLED=true
+VISION_TELEMETRY_MAX_FPS=10
+VISION_SEGMENTATION_CONFIG_PATH=road_segmentation.env
+```
 
-Os valores padrão vivem em `config/autonomous_car.env` (e em um arquivo `.env` de conveniência na raiz do projeto). Copie-os para outro local ou edite-os diretamente conforme a sua necessidade. Valores podem ser ajustados em tempo real via WebSocket para facilitar a calibração em pista.
+### `config/road_segmentation.env`
 
-> **Dica:** os limites de direção vêm configurados para manter o servo entre 70° e 110° (centro em 90°). Ajuste `STEERING_LEFT_LIMIT_DEGREES` e `STEERING_RIGHT_LIMIT_DEGREES` caso a montagem permita um curso diferente em cada lado.
+Contem os mesmos `LANE_*` ja validados no laboratorio, sem renomear o contrato.
 
-### Calibração da visão (pipeline de pista)
+## Fontes de captura
 
-O processamento do vídeo usa variáveis de ambiente (ou entradas no `.env`) para ajustar cada filtro do `LaneDetector` sem recompilar o projeto:
+O servico de visao aceita:
 
-| Variável | Efeito |
-|----------|--------|
-| `LANE_ROI_BAND_START` / `LANE_ROI_BAND_END` | Definem a faixa vertical (0 = topo, 1 = base) analisada pelo detector. Ajuste para focar exatamente na região em que o EVA aparece. |
-| `LANE_GAUSSIAN_KERNEL` / `LANE_GAUSSIAN_SIGMA` | Controlam o blur gaussiano que suaviza ruídos. Kernels maiores e sigma alto deixam a máscara uniforme, mas borram detalhes. |
-| `LANE_HSV_LOW` / `LANE_HSV_HIGH` | Limites HSV usados para isolar o EVA preto. Ajuste para adaptar-se à iluminação do ambiente. |
-| `LANE_MORPH_KERNEL` | Tamanho do kernel usado na operação morfológica _close_, responsável por preencher falhas na faixa detectada. |
-| `LANE_MORPH_ITERATIONS` | Número de repetições do _close_. Mais iterações juntam regiões próximas, porém podem engolir ruídos. |
-| `LANE_MIN_CONTOUR_AREA` | Área mínima (em px²) para considerar um contorno como pista válida, evitando falsos positivos pequenos. |
+- camera do Raspberry (`VISION_SOURCE_MODE=camera`)
+- video local (`VISION_SOURCE_MODE=video`)
+- imagem local (`VISION_SOURCE_MODE=image`)
 
-Após definir as variáveis (por exemplo exportando antes de rodar `start.sh`), reinicie o serviço para que os novos parâmetros sejam aplicados.
+Quando o modo nao for `camera`, `VISION_SOURCE_PATH` pode ser relativo ao diretorio de `vision.env`.
+Se a fonte local falhar, o servico tenta fallback para a camera configurada.
 
-## Próximos passos sugeridos
+## Debug local
 
-- Integrar sensores de feedback (encoders, IMU) para fechar o loop de velocidade real
-- Adicionar monitoramento de telemetria via WebSocket/broker MQTT
-- Criar interface web com sliders para ajuste dinâmico dos ganhos PID
+Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o servico abre um dashboard com o renderer do laboratorio.
+
+Atalhos:
+
+- `q` ou `ESC`: encerra o servico de visao
+- `p`: pausa/retoma video ou camera
+- `n`: avanca um frame quando pausado
+- `r`: recarrega `vision.env` e `road_segmentation.env`
+
+## WebSocket
+
+Servidor padrao:
+
+```text
+ws://0.0.0.0:8080
+```
+
+Mensagens de entrada:
+
+- `client:control`
+- `client:telemetry`
+- `command:<origem>:<acao>`
+- `config:<chave>=<valor>`
+
+Compatibilidade:
+
+- a primeira conexao que enviar `command:` ou `config:` sem registro explicito assume `control`
+- conexoes extras que tentarem controlar o carro caem como `telemetry`
+
+Exemplos:
+
+```text
+client:control
+command:manual:forward
+command:manual:steering=0.25
+config:driving.mode=autonomous
+```
+
+Telemetria publicada:
+
+```json
+{
+  "type": "telemetry.road_segmentation",
+  "timestamp_ms": 1710000000000,
+  "source": "Camera index 0",
+  "lane_found": true,
+  "confidence_score": 0.87,
+  "lane_center_ratio": 0.52,
+  "steering_error_normalized": 0.11,
+  "lateral_offset_px": 14.5,
+  "heading_error_rad": 0.23,
+  "heading_valid": true,
+  "curvature_indicator_rad": -0.07,
+  "curvature_valid": true,
+  "references": {
+    "near": {
+      "valid": true,
+      "point_x": 160,
+      "point_y": 200,
+      "top_y": 150,
+      "bottom_y": 220,
+      "center_ratio": 0.55,
+      "lateral_offset_px": 18.0,
+      "steering_error_normalized": 0.14,
+      "sample_count": 12
+    }
+  }
+}
+```
+
+## Build e testes
+
+```bash
+cmake -S . -B build
+cmake --build build
+cd build
+ctest --output-on-failure
+```
+
+No ambiente sem `wiringPi`, os testes e o binario `autonomous_car_v3_vision_debug` continuam disponiveis.
+
+## Limitacoes desta etapa
+
+- a segmentacao apenas observa e publica telemetria
+- nao ha resposta automatica de direcao nem integracao com PID
+- o frame de debug nao e enviado pelo WebSocket; apenas metricas e estado

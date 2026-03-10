@@ -1,9 +1,7 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
-#include <filesystem>
 #include <iostream>
-#include <system_error>
 #include <memory>
 #include <thread>
 
@@ -13,8 +11,8 @@
 #include "commands/center_steering/CenterSteeringCommand.hpp"
 #include "commands/forward/ForwardCommand.hpp"
 #include "commands/steering/SteeringCommand.hpp"
-#include "commands/throttle/ThrottleCommand.hpp"
 #include "commands/stop/StopCommand.hpp"
+#include "commands/throttle/ThrottleCommand.hpp"
 #include "commands/turn_left/TurnLeftCommand.hpp"
 #include "commands/turn_right/TurnRightCommand.hpp"
 #include "common/DrivingMode.hpp"
@@ -22,7 +20,8 @@
 #include "controllers/CommandDispatcher.hpp"
 #include "controllers/MotorController.hpp"
 #include "controllers/SteeringController.hpp"
-#include "services/CameraService.hpp"
+#include "runtime/ConfigPathResolver.hpp"
+#include "services/RoadSegmentationService.hpp"
 #include "services/WebSocketServer.hpp"
 
 namespace {
@@ -32,31 +31,12 @@ void handleSignal(int) {
     g_should_exit = 1;
 }
 
-std::filesystem::path resolveConfigPath() {
-    namespace fs = std::filesystem;
-    const fs::path config_relative{"config/autonomous_car.env"};
-
-    std::error_code error;
-    auto executable_symlink = fs::read_symlink("/proc/self/exe", error);
-    if (!error) {
-        auto candidate = executable_symlink.parent_path().parent_path() / config_relative;
-        if (fs::exists(candidate)) {
-            return candidate;
-        }
-    }
-
-    fs::path fallback = fs::current_path() / config_relative;
-    if (fs::exists(fallback)) {
-        return fallback;
-    }
-
-    return {};
-}
-}
+} // namespace
 
 int main() {
     if (wiringPiSetupGpio() != 0) {
-        std::cerr << "Falha ao inicializar o WiringPi. Certifique-se de executá-lo com permissões adequadas." << std::endl;
+        std::cerr << "Falha ao inicializar o WiringPi. Certifique-se de executa-lo com permissoes adequadas."
+                  << std::endl;
         return 1;
     }
 
@@ -72,18 +52,19 @@ int main() {
     using autonomous_car::controllers::CommandDispatcher;
     using autonomous_car::controllers::MotorController;
     using autonomous_car::controllers::SteeringController;
-    using autonomous_car::services::CameraService;
+    using autonomous_car::runtime::resolveProjectPath;
+    using autonomous_car::services::RoadSegmentationService;
     using autonomous_car::services::WebSocketServer;
 
     auto &config_manager = ConfigurationManager::instance();
     config_manager.loadDefaults();
-    auto config_path = resolveConfigPath();
-    if (!config_path.empty()) {
-        config_manager.loadFromFile(config_path.string());
-        std::cout << "Configuração carregada de: " << config_path << std::endl;
-    } else {
-        std::cerr << "Arquivo de configuração não encontrado. Utilizando valores padrão." << std::endl;
-    }
+
+    const auto config_path = resolveProjectPath("config/autonomous_car.env");
+    config_manager.loadFromFile(config_path.string());
+    std::cout << "Configuracao de hardware: " << config_path << std::endl;
+
+    const auto vision_config_path = resolveProjectPath("config/vision.env");
+    std::cout << "Configuracao de visao: " << vision_config_path << std::endl;
 
     auto runtime_config = config_manager.snapshot();
     std::atomic<autonomous_car::DrivingMode> active_driving_mode{runtime_config.driving_mode};
@@ -96,6 +77,7 @@ int main() {
     steering_controller.configureAngleLimits(runtime_config.steering_center_angle,
                                              runtime_config.steering_left_limit,
                                              runtime_config.steering_right_limit);
+
     MotorController::DynamicsConfig motor_dynamics;
     motor_dynamics.invert_left = runtime_config.motor_left_inverted;
     motor_dynamics.invert_right = runtime_config.motor_right_inverted;
@@ -116,11 +98,12 @@ int main() {
     dispatcher.registerCommand("steering", std::make_unique<SteeringCommand>(steering_controller));
 
     auto config_update_handler = [&](const std::string &key, const std::string &value) {
-        bool updated = config_manager.updateSetting(key, value);
+        const bool updated = config_manager.updateSetting(key, value);
         if (!updated) {
             return false;
         }
-        auto updated_snapshot = config_manager.snapshot();
+
+        const auto updated_snapshot = config_manager.snapshot();
         MotorController::DynamicsConfig updated_motor_dynamics;
         updated_motor_dynamics.invert_left = updated_snapshot.motor_left_inverted;
         updated_motor_dynamics.invert_right = updated_snapshot.motor_right_inverted;
@@ -138,13 +121,16 @@ int main() {
 
     auto driving_mode_provider = [&active_driving_mode]() { return active_driving_mode.load(); };
     WebSocketServer server("0.0.0.0", 8080, dispatcher, config_update_handler, driving_mode_provider);
-    CameraService camera_service;
-    server.start();
-    camera_service.start();
+    RoadSegmentationService road_segmentation_service(
+        vision_config_path.string(),
+        [&server](const std::string &payload) { server.broadcastText(payload); });
 
-    std::cout << "Autonomous Car v3 WebSocket server iniciado em ws://0.0.0.0:8080" << std::endl;
-    std::cout << "Canal de comandos: command:<origem>:<acao> (ex.: command:manual:forward)" << std::endl;
-    std::cout << "Canal de configuração: config:<chave>=<valor> (ex.: config:steering.sensitivity=1.2)" << std::endl;
+    server.start();
+    road_segmentation_service.start();
+
+    std::cout << "Autonomous Car v3 iniciado em ws://0.0.0.0:8080" << std::endl;
+    std::cout << "Canais: command:<origem>:<acao>, config:<chave>=<valor>, client:control/client:telemetry"
+              << std::endl;
 
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
@@ -154,8 +140,8 @@ int main() {
     }
 
     std::cout << "Encerrando servidor..." << std::endl;
+    road_segmentation_service.stop();
     server.stop();
-    camera_service.stop();
     motor_controller.stop();
     steering_controller.center();
 
