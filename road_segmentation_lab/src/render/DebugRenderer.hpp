@@ -25,6 +25,8 @@ class DebugRenderer {
     cv::Mat buildMaskTile(const pipeline::RoadSegmentationResult &result) const;
     cv::Mat buildOutputTile(const pipeline::RoadSegmentationResult &result) const;
 
+    static cv::Mat composeTileCard(const cv::Mat &image, const std::string &title,
+                                   const std::vector<std::string> &lines);
     static cv::Mat ensureColor(const cv::Mat &frame);
     static void drawLabelBlock(cv::Mat &image, const std::string &title,
                                const std::vector<std::string> &lines);

@@ -1,4 +1,6 @@
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -15,6 +17,8 @@ namespace {
 
 using road_segmentation_lab::config::LabConfig;
 using road_segmentation_lab::config::SegmentationMode;
+using road_segmentation_lab::config::loadConfigFromFile;
+using road_segmentation_lab::pipeline::LookaheadReference;
 using road_segmentation_lab::pipeline::RoadSegmentationPipeline;
 using road_segmentation_lab::pipeline::RoadSegmentationResult;
 
@@ -70,6 +74,36 @@ cv::Mat makeLaneFrame(int width, int height, int bottom_center_x, int top_center
     return image;
 }
 
+cv::Mat makePolylineLaneFrame(int width, int height, const std::vector<int> &center_xs,
+                              int lane_width) {
+    cv::Mat image(height, width, CV_8UC3, cv::Scalar(255, 255, 255));
+    if (center_xs.size() < 2) {
+        return image;
+    }
+
+    const int roi_top = height / 2;
+    const int half_width = lane_width / 2;
+    std::vector<cv::Point> left_boundary;
+    std::vector<cv::Point> right_boundary;
+    left_boundary.reserve(center_xs.size());
+    right_boundary.reserve(center_xs.size());
+
+    for (std::size_t index = 0; index < center_xs.size(); ++index) {
+        const double ratio = static_cast<double>(index) / static_cast<double>(center_xs.size() - 1);
+        const int y = roi_top + static_cast<int>(
+                                    std::lround(ratio * static_cast<double>((height - 1) - roi_top)));
+        left_boundary.emplace_back(center_xs[index] - half_width, y);
+        right_boundary.emplace_back(center_xs[index] + half_width, y);
+    }
+
+    std::vector<cv::Point> polygon = left_boundary;
+    for (auto it = right_boundary.rbegin(); it != right_boundary.rend(); ++it) {
+        polygon.push_back(*it);
+    }
+    cv::fillPoly(image, std::vector<std::vector<cv::Point>>{polygon}, cv::Scalar(0, 0, 0), cv::LINE_AA);
+    return image;
+}
+
 cv::Mat addVehicleHood(const cv::Mat &frame) {
     cv::Mat image = frame.clone();
     const cv::Point center(image.cols / 2, image.rows - 18);
@@ -81,6 +115,21 @@ cv::Mat addVehicleHood(const cv::Mat &frame) {
 RoadSegmentationResult runPipeline(const LabConfig &config, const cv::Mat &frame) {
     RoadSegmentationPipeline pipeline(config);
     return pipeline.process(frame);
+}
+
+std::filesystem::path writeTempConfigFile(const std::string &name, const std::string &contents) {
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / name;
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to create temporary config file.");
+    }
+    file << contents;
+    return path;
+}
+
+void expectReferenceValid(const LookaheadReference &reference, const std::string &label) {
+    expect(reference.valid, label + " reference should be valid.");
+    expect(reference.sample_count >= 2, label + " reference should aggregate at least two samples.");
 }
 
 void testCenteredLane() {
@@ -96,6 +145,24 @@ void testCenteredLane() {
            "Both lane boundaries should expose real boundary polylines.");
     expect(result.road_polygon_points.size() >= 12,
            "Centered lane should produce a filled road polygon.");
+    expectReferenceValid(result.far_reference, "FAR");
+    expectReferenceValid(result.mid_reference, "MID");
+    expectReferenceValid(result.near_reference, "NEAR");
+    expect(result.far_reference.point.y < result.mid_reference.point.y &&
+               result.mid_reference.point.y < result.near_reference.point.y,
+           "Lookahead references should be ordered from FAR to NEAR.");
+    expectNear(result.far_reference.lateral_offset_px, 0.0, 6.0,
+               "Centered FAR reference should stay near the frame center.");
+    expectNear(result.mid_reference.lateral_offset_px, 0.0, 6.0,
+               "Centered MID reference should stay near the frame center.");
+    expectNear(result.near_reference.lateral_offset_px, 0.0, 6.0,
+               "Centered NEAR reference should stay near the frame center.");
+    expect(result.heading_valid, "Centered lane should expose a valid heading.");
+    expect(result.curvature_valid, "Centered lane should expose a valid curvature estimate.");
+    expectNear(result.heading_error_rad, 0.0, 0.08,
+               "Centered lane should have near-zero heading error.");
+    expectNear(result.curvature_indicator_rad, 0.0, 0.08,
+               "Centered lane should have near-zero curvature indicator.");
 }
 
 void testShiftedLeftLane() {
@@ -107,6 +174,12 @@ void testShiftedLeftLane() {
     expect(result.lane_center_ratio < 0.5, "Left-shifted lane ratio should be below 0.5.");
     expect(result.steering_error_normalized < 0.0,
            "Left-shifted lane should produce a negative normalized error.");
+    expect(result.far_reference.steering_error_normalized < 0.0,
+           "Left-shifted FAR reference should stay on the left.");
+    expect(result.mid_reference.steering_error_normalized < 0.0,
+           "Left-shifted MID reference should stay on the left.");
+    expect(result.near_reference.steering_error_normalized < 0.0,
+           "Left-shifted NEAR reference should stay on the left.");
 }
 
 void testShiftedRightLane() {
@@ -118,16 +191,26 @@ void testShiftedRightLane() {
     expect(result.lane_center_ratio > 0.5, "Right-shifted lane ratio should be above 0.5.");
     expect(result.steering_error_normalized > 0.0,
            "Right-shifted lane should produce a positive normalized error.");
+    expect(result.far_reference.steering_error_normalized > 0.0,
+           "Right-shifted FAR reference should stay on the right.");
+    expect(result.mid_reference.steering_error_normalized > 0.0,
+           "Right-shifted MID reference should stay on the right.");
+    expect(result.near_reference.steering_error_normalized > 0.0,
+           "Right-shifted NEAR reference should stay on the right.");
 }
 
 void testCurvedLaneLikeShape() {
     LabConfig config = makeBaseConfig();
-    const cv::Mat frame = makeLaneFrame(320, 240, 200, 130, 110);
+    const cv::Mat frame = makePolylineLaneFrame(320, 240, {260, 240, 145, 135, 135}, 110);
     const RoadSegmentationResult result = runPipeline(config, frame);
 
     expect(result.lane_found, "Curved/slanted lane should still be detected.");
-    expect(result.lane_center_ratio > 0.5,
-           "Curved lane ending on the right should bias the center ratio to the right.");
+    expect(result.heading_valid, "Curved lane should expose a valid heading.");
+    expect(result.curvature_valid, "Curved lane should expose a valid curvature estimate.");
+    expect(result.heading_error_rad > 0.0,
+           "Curved lane heading should be positive when the road trends to the right.");
+    expect(result.curvature_indicator_rad > 0.0,
+           "Curved lane curvature should be positive when the turn intensifies to the right.");
 }
 
 void testNoiseOutsideMainRoad() {
@@ -161,6 +244,8 @@ void testResizeAndRoi() {
     expect(result.roi_frame.size() == cv::Size(320, 120), "ROI stage should keep the lower half.");
     expect(result.roi_rect == cv::Rect(0, 120, 320, 120), "ROI rect should match the expected crop.");
     expect(result.roi_polygon_points.size() == 4, "ROI trapezoid should expose four polygon points.");
+    expect(result.far_reference.top_y == 120 && result.near_reference.bottom_y == 239,
+           "Lookahead ranges should be expressed in absolute frame coordinates.");
 }
 
 void testAllSegmentationModes() {
@@ -201,6 +286,75 @@ void testHoodMaskRemovesVehicleInfluence() {
            "Hood masking should reduce the segmented area contaminated by the vehicle hood.");
 }
 
+void testReferenceConfigParsing() {
+    LabConfig config = makeBaseConfig();
+    std::vector<std::string> warnings;
+    const std::filesystem::path path = writeTempConfigFile(
+        "road_segmentation_lab_reference_valid.env",
+        "LANE_REFERENCE_FAR_TOP_RATIO=0.10\n"
+        "LANE_REFERENCE_FAR_BOTTOM_RATIO=0.25\n"
+        "LANE_REFERENCE_MID_TOP_RATIO=0.25\n"
+        "LANE_REFERENCE_MID_BOTTOM_RATIO=0.60\n"
+        "LANE_REFERENCE_NEAR_TOP_RATIO=0.60\n"
+        "LANE_REFERENCE_NEAR_BOTTOM_RATIO=0.95\n");
+
+    const bool loaded = loadConfigFromFile(path.string(), config, &warnings);
+    std::filesystem::remove(path);
+
+    expect(loaded, "Valid reference-zone config should load.");
+    expect(warnings.empty(), "Valid reference-zone config should not emit warnings.");
+    expectNear(config.reference_far_top_ratio, 0.10, 1e-6, "FAR top ratio should parse correctly.");
+    expectNear(config.reference_mid_bottom_ratio, 0.60, 1e-6,
+               "MID bottom ratio should parse correctly.");
+    expectNear(config.reference_near_bottom_ratio, 0.95, 1e-6,
+               "NEAR bottom ratio should parse correctly.");
+}
+
+void testReferenceConfigFallback() {
+    LabConfig config = makeBaseConfig();
+    std::vector<std::string> warnings;
+    const std::filesystem::path path = writeTempConfigFile(
+        "road_segmentation_lab_reference_invalid.env",
+        "LANE_REFERENCE_FAR_TOP_RATIO=0.40\n"
+        "LANE_REFERENCE_FAR_BOTTOM_RATIO=0.20\n"
+        "LANE_REFERENCE_MID_TOP_RATIO=0.20\n"
+        "LANE_REFERENCE_MID_BOTTOM_RATIO=0.50\n"
+        "LANE_REFERENCE_NEAR_TOP_RATIO=0.50\n"
+        "LANE_REFERENCE_NEAR_BOTTOM_RATIO=0.80\n");
+
+    const bool loaded = loadConfigFromFile(path.string(), config, &warnings);
+    std::filesystem::remove(path);
+
+    expect(loaded, "Invalid reference-zone config should still load with fallback.");
+    expect(!warnings.empty(), "Invalid reference-zone config should emit a warning.");
+    expectNear(config.reference_far_top_ratio, 0.0, 1e-6,
+               "Invalid reference ranges should restore FAR top default.");
+    expectNear(config.reference_far_bottom_ratio, 0.33, 1e-6,
+               "Invalid reference ranges should restore FAR bottom default.");
+    expectNear(config.reference_mid_top_ratio, 0.33, 1e-6,
+               "Invalid reference ranges should restore MID top default.");
+    expectNear(config.reference_mid_bottom_ratio, 0.66, 1e-6,
+               "Invalid reference ranges should restore MID bottom default.");
+    expectNear(config.reference_near_top_ratio, 0.66, 1e-6,
+               "Invalid reference ranges should restore NEAR top default.");
+    expectNear(config.reference_near_bottom_ratio, 1.0, 1e-6,
+               "Invalid reference ranges should restore NEAR bottom default.");
+}
+
+void testMissingFarReferenceDisablesCurvature() {
+    LabConfig config = makeBaseConfig();
+    cv::Mat frame = makeLaneFrame(320, 240, 160, 160, 120);
+    cv::rectangle(frame, {0, 0}, {frame.cols - 1, 160}, cv::Scalar(255, 255, 255), cv::FILLED);
+
+    const RoadSegmentationResult result = runPipeline(config, frame);
+
+    expect(result.mid_reference.valid, "MID reference should remain valid when only FAR is missing.");
+    expect(result.near_reference.valid, "NEAR reference should remain valid when only FAR is missing.");
+    expect(!result.far_reference.valid, "FAR reference should become invalid when its band is empty.");
+    expect(result.heading_valid, "Heading should still be valid with NEAR and MID references.");
+    expect(!result.curvature_valid, "Curvature should be disabled when FAR reference is missing.");
+}
+
 } // namespace
 
 int main() {
@@ -214,6 +368,9 @@ int main() {
         {"resize_and_roi", testResizeAndRoi},
         {"all_segmentation_modes", testAllSegmentationModes},
         {"hood_mask_removes_vehicle_influence", testHoodMaskRemovesVehicleInfluence},
+        {"reference_config_parsing", testReferenceConfigParsing},
+        {"reference_config_fallback", testReferenceConfigFallback},
+        {"missing_far_reference_disables_curvature", testMissingFarReferenceDisablesCurvature},
     };
 
     for (const auto &[name, test] : tests) {

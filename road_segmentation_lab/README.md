@@ -12,6 +12,8 @@ Protótipo standalone em **C++17 + OpenCV** para validar a segmentação da via 
 - Calcular métricas para o controle futuro:
   - `lane_center_ratio` em `[0,1]`
   - `steering_error_normalized` em `[-1,1]`
+  - referencias `far`, `mid` e `near` para lookahead futuro
+  - `heading_error_rad` e `curvature_indicator_rad`
 
 ## Build
 
@@ -60,6 +62,7 @@ O arquivo padrão fica em [config/road_segmentation_lab.env](/media/omodei/arqui
 Pipeline atual:
 
 - ROI retangular para cortar a metade inferior da imagem
+- faixas horizontais configuraveis `far`, `mid` e `near` dentro da ROI util
 - ROI poligonal trapezoidal para focar no corredor útil
 - máscara fixa do capô
 - blur leve
@@ -67,6 +70,7 @@ Pipeline atual:
 - morfologia `closing + opening`
 - seleção do componente principal da pista
 - extração das bordas reais por scanlines
+- extração da `centerline` e agregação em tres referencias programaveis
 - preenchimento da área da pista e score de confiança na saída anotada
 
 Parâmetros públicos:
@@ -76,6 +80,12 @@ Parâmetros públicos:
 - `LANE_TARGET_HEIGHT`
 - `LANE_ROI_TOP_RATIO`
 - `LANE_ROI_BOTTOM_RATIO`
+- `LANE_REFERENCE_FAR_TOP_RATIO`
+- `LANE_REFERENCE_FAR_BOTTOM_RATIO`
+- `LANE_REFERENCE_MID_TOP_RATIO`
+- `LANE_REFERENCE_MID_BOTTOM_RATIO`
+- `LANE_REFERENCE_NEAR_TOP_RATIO`
+- `LANE_REFERENCE_NEAR_BOTTOM_RATIO`
 - `LANE_ROI_POLYGON_TOP_WIDTH_RATIO`
 - `LANE_ROI_POLYGON_BOTTOM_WIDTH_RATIO`
 - `LANE_ROI_POLYGON_CENTER_X_RATIO`
@@ -107,16 +117,57 @@ Parâmetros públicos:
 - `LAB_DARK`
 - `ADAPTIVE_GRAY`
 
+## Lookahead triplet
+
+As referencias `far`, `mid` e `near` sao sempre definidas **dentro da ROI atual**. Ou seja:
+
+- `LANE_ROI_TOP_RATIO` e `LANE_ROI_BOTTOM_RATIO` escolhem quanto da imagem entra na analise
+- as variaveis `LANE_REFERENCE_*` subdividem apenas essa ROI util
+
+Defaults atuais:
+
+- `far: 0.00 -> 0.33`
+- `mid: 0.33 -> 0.66`
+- `near: 0.66 -> 1.00`
+
+Leitura operacional para o controle futuro:
+
+- `near`: corrige o erro lateral imediato do carro
+- `mid`: ajuda a alinhar a orientacao da trajetoria
+- `far`: antecipa tendencia de curva
+
+Convencoes de sinal:
+
+- `lateral_offset_px` e `steering_error_normalized` positivos significam pista deslocada para a direita
+- `heading_error_rad` positivo significa que a trajetoria aponta para a direita
+- `curvature_indicator_rad` positivo significa tendencia de curva para a direita
+
+Cada faixa retorna:
+
+- ponto medio da `centerline` dentro da faixa
+- `center_ratio`
+- `lateral_offset_px`
+- `steering_error_normalized`
+- `sample_count`
+- `valid`
+
+As metricas derivadas publicas sao:
+
+- `heading_error_rad`, calculado com o segmento `near -> mid`
+- `curvature_indicator_rad`, calculado pela diferenca angular entre `near -> mid` e `mid -> far`
+
 ## Saída anotada
 
 A janela final desenha:
 
+- bandas horizontais `FAR`, `MID` e `NEAR` sobre a ROI
+- pontos de referencia `FAR`, `MID` e `NEAR`
 - borda esquerda em azul
 - borda direita em amarelo
 - linha central da pista em verde
 - área da pista preenchida com transparência
 - linha central da imagem
-- erro lateral e score de confiança
+- erro lateral, heading, curvature e score de confiança
 
 ## Testes
 

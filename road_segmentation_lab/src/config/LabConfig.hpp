@@ -20,6 +20,12 @@ struct LabConfig {
     int target_height{240};
     double roi_top_ratio{0.5};
     double roi_bottom_ratio{1.0};
+    double reference_far_top_ratio{0.0};
+    double reference_far_bottom_ratio{0.33};
+    double reference_mid_top_ratio{0.33};
+    double reference_mid_bottom_ratio{0.66};
+    double reference_near_top_ratio{0.66};
+    double reference_near_bottom_ratio{1.0};
     double roi_polygon_top_width_ratio{0.58};
     double roi_polygon_bottom_width_ratio{1.0};
     double roi_polygon_center_x_ratio{0.5};

@@ -161,6 +161,26 @@ void pushWarning(std::vector<std::string> *warnings, const std::string &message)
     }
 }
 
+bool hasValidReferenceZones(const LabConfig &config) {
+    return config.reference_far_top_ratio >= 0.0 &&
+           config.reference_far_top_ratio < config.reference_far_bottom_ratio &&
+           config.reference_far_bottom_ratio <= config.reference_mid_top_ratio &&
+           config.reference_mid_top_ratio < config.reference_mid_bottom_ratio &&
+           config.reference_mid_bottom_ratio <= config.reference_near_top_ratio &&
+           config.reference_near_top_ratio < config.reference_near_bottom_ratio &&
+           config.reference_near_bottom_ratio <= 1.0;
+}
+
+void restoreDefaultReferenceZones(LabConfig &config) {
+    const LabConfig defaults;
+    config.reference_far_top_ratio = defaults.reference_far_top_ratio;
+    config.reference_far_bottom_ratio = defaults.reference_far_bottom_ratio;
+    config.reference_mid_top_ratio = defaults.reference_mid_top_ratio;
+    config.reference_mid_bottom_ratio = defaults.reference_mid_bottom_ratio;
+    config.reference_near_top_ratio = defaults.reference_near_top_ratio;
+    config.reference_near_bottom_ratio = defaults.reference_near_bottom_ratio;
+}
+
 } // namespace
 
 std::string segmentationModeToString(SegmentationMode mode) {
@@ -244,6 +264,60 @@ bool loadConfigFromFile(const std::string &path, LabConfig &config,
         if (key == "LANE_ROI_BOTTOM_RATIO") {
             if (const auto parsed = parseDouble(value)) {
                 config.roi_bottom_ratio = std::clamp(*parsed, 0.0, 1.0);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "LANE_REFERENCE_FAR_TOP_RATIO") {
+            if (const auto parsed = parseDouble(value)) {
+                config.reference_far_top_ratio = std::clamp(*parsed, 0.0, 1.0);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "LANE_REFERENCE_FAR_BOTTOM_RATIO") {
+            if (const auto parsed = parseDouble(value)) {
+                config.reference_far_bottom_ratio = std::clamp(*parsed, 0.0, 1.0);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "LANE_REFERENCE_MID_TOP_RATIO") {
+            if (const auto parsed = parseDouble(value)) {
+                config.reference_mid_top_ratio = std::clamp(*parsed, 0.0, 1.0);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "LANE_REFERENCE_MID_BOTTOM_RATIO") {
+            if (const auto parsed = parseDouble(value)) {
+                config.reference_mid_bottom_ratio = std::clamp(*parsed, 0.0, 1.0);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "LANE_REFERENCE_NEAR_TOP_RATIO") {
+            if (const auto parsed = parseDouble(value)) {
+                config.reference_near_top_ratio = std::clamp(*parsed, 0.0, 1.0);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "LANE_REFERENCE_NEAR_BOTTOM_RATIO") {
+            if (const auto parsed = parseDouble(value)) {
+                config.reference_near_bottom_ratio = std::clamp(*parsed, 0.0, 1.0);
             } else {
                 pushWarning(warnings, "Valor invalido para " + key);
             }
@@ -468,6 +542,12 @@ bool loadConfigFromFile(const std::string &path, LabConfig &config,
 
     if (config.roi_polygon_top_width_ratio > config.roi_polygon_bottom_width_ratio) {
         config.roi_polygon_top_width_ratio = config.roi_polygon_bottom_width_ratio;
+    }
+
+    if (!hasValidReferenceZones(config)) {
+        restoreDefaultReferenceZones(config);
+        pushWarning(warnings,
+                    "Faixas de referencia invalidas; restaurando thirds padrao para FAR/MID/NEAR.");
     }
 
     return true;

@@ -1,6 +1,7 @@
 #include "pipeline/RoadSegmentationPipeline.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include <opencv2/imgproc.hpp>
@@ -88,6 +89,98 @@ std::vector<cv::Point> translatePoints(const std::vector<cv::Point> &points, con
     return translated;
 }
 
+int ratioToAbsoluteY(double ratio, const cv::Rect &roi_rect) {
+    if (roi_rect.height <= 0) {
+        return 0;
+    }
+
+    const double clamped_ratio = std::clamp(ratio, 0.0, 1.0);
+    return roi_rect.y + static_cast<int>(
+                            std::lround(clamped_ratio * static_cast<double>(std::max(0, roi_rect.height - 1))));
+}
+
+LookaheadReference buildLookaheadReference(const std::vector<cv::Point> &centerline_points,
+                                          const cv::Rect &roi_rect, const cv::Size &frame_size,
+                                          double top_ratio, double bottom_ratio) {
+    LookaheadReference reference;
+    reference.top_y = ratioToAbsoluteY(top_ratio, roi_rect);
+    reference.bottom_y = ratioToAbsoluteY(bottom_ratio, roi_rect);
+
+    if (roi_rect.height <= 0 || frame_size.width <= 0 || centerline_points.empty()) {
+        return reference;
+    }
+
+    double sum_x = 0.0;
+    double sum_y = 0.0;
+    for (const cv::Point &point : centerline_points) {
+        if (point.y < reference.top_y || point.y > reference.bottom_y) {
+            continue;
+        }
+
+        sum_x += static_cast<double>(point.x);
+        sum_y += static_cast<double>(point.y);
+        ++reference.sample_count;
+    }
+
+    if (reference.sample_count < 2) {
+        return reference;
+    }
+
+    reference.point = cv::Point(static_cast<int>(std::lround(sum_x / static_cast<double>(reference.sample_count))),
+                                static_cast<int>(std::lround(sum_y / static_cast<double>(reference.sample_count))));
+    if (frame_size.width > 1) {
+        reference.center_ratio = std::clamp(
+            static_cast<double>(reference.point.x) / static_cast<double>(frame_size.width - 1), 0.0, 1.0);
+    }
+
+    const double frame_center_x =
+        frame_size.width > 0 ? (static_cast<double>(frame_size.width) - 1.0) / 2.0 : 0.0;
+    reference.lateral_offset_px = static_cast<double>(reference.point.x) - frame_center_x;
+    if (frame_center_x > 0.0) {
+        reference.steering_error_normalized =
+            std::clamp(reference.lateral_offset_px / frame_center_x, -1.0, 1.0);
+    }
+    reference.valid = true;
+    return reference;
+}
+
+double computeHeadingErrorRad(const LookaheadReference &near_reference,
+                              const LookaheadReference &mid_reference) {
+    const double dx = static_cast<double>(mid_reference.point.x - near_reference.point.x);
+    const double forward_distance =
+        std::max(1e-6, std::abs(static_cast<double>(near_reference.point.y - mid_reference.point.y)));
+    return std::atan2(dx, forward_distance);
+}
+
+double normalizeAngleRad(double angle_rad) {
+    return std::atan2(std::sin(angle_rad), std::cos(angle_rad));
+}
+
+void populateLookaheadReferences(RoadSegmentationResult &result, const cv::Size &frame_size,
+                                 const config::LabConfig &config) {
+    result.far_reference =
+        buildLookaheadReference(result.centerline_points, result.roi_rect, frame_size,
+                                config.reference_far_top_ratio, config.reference_far_bottom_ratio);
+    result.mid_reference =
+        buildLookaheadReference(result.centerline_points, result.roi_rect, frame_size,
+                                config.reference_mid_top_ratio, config.reference_mid_bottom_ratio);
+    result.near_reference =
+        buildLookaheadReference(result.centerline_points, result.roi_rect, frame_size,
+                                config.reference_near_top_ratio, config.reference_near_bottom_ratio);
+
+    if (result.near_reference.valid && result.mid_reference.valid) {
+        result.heading_error_rad = computeHeadingErrorRad(result.near_reference, result.mid_reference);
+        result.heading_valid = true;
+    }
+
+    if (result.near_reference.valid && result.mid_reference.valid && result.far_reference.valid) {
+        const double near_mid_heading = computeHeadingErrorRad(result.near_reference, result.mid_reference);
+        const double mid_far_heading = computeHeadingErrorRad(result.mid_reference, result.far_reference);
+        result.curvature_indicator_rad = normalizeAngleRad(mid_far_heading - near_mid_heading);
+        result.curvature_valid = true;
+    }
+}
+
 } // namespace
 
 RoadSegmentationPipeline::RoadSegmentationPipeline() { updateConfig(config::LabConfig{}); }
@@ -149,6 +242,7 @@ RoadSegmentationResult RoadSegmentationPipeline::process(const cv::Mat &frame) c
     }
     result.roi_polygon_points = translatePoints(roi_polygon, roi_rect.tl());
     result.hood_mask_polygon_points = translatePoints(hood_polygon, roi_rect.tl());
+    populateLookaheadReferences(result, corrected.size(), config_);
     return result;
 }
 

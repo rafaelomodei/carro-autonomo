@@ -13,6 +13,17 @@ struct LaneBoundarySegment {
     bool valid{false};
 };
 
+struct LookaheadReference {
+    cv::Point point;
+    int top_y{0};
+    int bottom_y{0};
+    double center_ratio{0.5};
+    double lateral_offset_px{0.0};
+    double steering_error_normalized{0.0};
+    int sample_count{0};
+    bool valid{false};
+};
+
 struct RoadSegmentationResult {
     bool lane_found{false};
     LaneBoundarySegment left_boundary;
@@ -26,7 +37,14 @@ struct RoadSegmentationResult {
     double lane_width_px{0.0};
     double mask_area_px{0.0};
     double confidence_score{0.0};
+    double heading_error_rad{0.0};
+    double curvature_indicator_rad{0.0};
+    bool heading_valid{false};
+    bool curvature_valid{false};
     std::string segmentation_mode;
+    LookaheadReference near_reference;
+    LookaheadReference mid_reference;
+    LookaheadReference far_reference;
     std::vector<cv::Point> left_boundary_points;
     std::vector<cv::Point> right_boundary_points;
     std::vector<cv::Point> centerline_points;
