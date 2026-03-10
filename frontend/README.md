@@ -1,8 +1,10 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend
 
-## Environment Variables
+Interface Next.js para operar o `autonomous_car_v3` via WebSocket.
 
-Create a `.env.local` file in the `frontend` directory with the Firebase credentials used by the app. The following variables are required:
+## Ambiente
+
+Crie um arquivo `.env.local` em `frontend/` com as credenciais Firebase:
 
 ```bash
 FIREBASE_API_KEY=
@@ -11,46 +13,130 @@ FIREBASE_PROJECT_ID=
 FIREBASE_STORAGE_BUCKET=
 FIREBASE_MESSAGING_SENDER_ID=
 FIREBASE_APP_ID=
+NEXT_PUBLIC_DEFAULT_VEHICLE_WS_URL=ws://192.168.15.163:8080
 ```
 
-Refer to your Firebase project settings for the values of each variable.
-
-## Getting Started
-
-First, run the development server:
+## Desenvolvimento
 
 ```bash
-# with npm
 npm run dev
-
-# with pnpm
-pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App local: `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Checks:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+```
 
-## Learn More
+## Contrato com o `autonomous_car_v3`
 
-To learn more about Next.js, take a look at the following resources:
+O frontend usa uma unica conexao WebSocket em papel `client:control`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+URL esperada:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```text
+ws://<host>:8080
+```
 
-## Deploy on Vercel
+### Mensagens enviadas
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+O frontend fala apenas o protocolo textual atual do backend:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```text
+client:control
+config:driving.mode=manual|autonomous
+config:steering.sensitivity=<valor>
+config:steering.command_step=<valor>
+config:autonomous.pid.kp=<valor>
+config:autonomous.pid.ki=<valor>
+config:autonomous.pid.kd=<valor>
+command:manual:forward
+command:manual:backward
+command:manual:stop
+command:manual:left
+command:manual:right
+command:manual:center
+command:autonomous:start
+command:autonomous:stop
+```
 
-## Skipping Vercel Builds
+### Mensagens recebidas
 
-This repository includes a `vercel.json` file configured with an ignored build step. The
-`scripts/skip-frontend-build.sh` script stops the Vercel build when no files inside the
-`frontend` directory changed. This helps avoid unnecessary deployments when working on
-other parts of the project.
+O frontend interpreta apenas:
+
+- `telemetry.road_segmentation`
+- `telemetry.autonomous_control`
+- `vision.frame` em uma segunda conexao WebSocket dedicada ao stream de visao
+
+O estado operacional da UI vem dessas telemetrias. O front pode mostrar um estado pendente logo apos o envio de um comando, mas a confirmacao real vem do backend.
+
+### Stream de visao
+
+Na tela `/debug`, o frontend abre uma segunda conexao no mesmo `ws://<host>:8080` quando ao menos uma view esta selecionada.
+
+Mensagens enviadas nessa conexao:
+
+```text
+client:telemetry
+stream:subscribe=raw,mask,annotated
+```
+
+Mensagens recebidas:
+
+```json
+{
+  "type": "vision.frame",
+  "view": "dashboard",
+  "timestamp_ms": 1710000000000,
+  "mime": "image/jpeg",
+  "width": 1280,
+  "height": 720,
+  "data": "<base64>"
+}
+```
+
+Views suportadas:
+
+- `raw`
+- `preprocess`
+- `mask`
+- `annotated`
+- `dashboard`
+
+## Comportamento atual da UI
+
+- `Settings` controla conexao, modo de conducao, `start/stop` autonomo, `steering.sensitivity`, `steering.command_step` e `Kp/Ki/Kd`.
+- `Joystick` opera em modo `segurar para mover`: enquanto o botao ou tecla estiver pressionado, o frontend reenfileira comandos manuais em intervalo curto para nao estourar o timeout do backend.
+- `Debug` virou a central de visao: seleciona views, abre o stream sob demanda e combina os frames com a telemetria recebida no socket de controle.
+- O frontend persiste localmente a URL do WebSocket e os ajustes de runtime que ele controla, reaplicando-os quando reconecta.
+- `command:autonomous:start` nao e reenviado automaticamente em reconexoes.
+
+## Reconexao
+
+Quando existe uma URL valida salva, o frontend tenta reconectar automaticamente com backoff progressivo.
+
+Estados publicos usados na UI:
+
+- `disconnected`
+- `connecting`
+- `connected`
+- `reconnecting`
+- `telemetry_stale`
+
+`telemetry_stale` indica que o socket continua aberto, mas a ultima telemetria recebida passou do limite esperado.
+
+## Limites desta entrega
+
+- Nao ha compatibilidade com o protocolo JSON antigo do frontend.
+- O stream de visao usa JSON + JPEG em base64, nao blobs binarios.
+- Nao ha painel de `signals` legado.
+- O frontend nao recebe snapshot completo das configuracoes do backend; ele reaplica apenas os parametros que controla.
+
+## Vercel
+
+O repositório inclui `vercel.json` com `ignored build step`. O script
+`scripts/skip-frontend-build.sh` evita build na Vercel quando nada em `frontend/`
+foi alterado.

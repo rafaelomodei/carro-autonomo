@@ -71,6 +71,8 @@ Detalhes do controlador e do painel local em `docs/pid_control.md`.
 - `VISION_CAMERA_INDEX`
 - `VISION_DEBUG_WINDOW_ENABLED`
 - `VISION_TELEMETRY_MAX_FPS`
+- `VISION_STREAM_MAX_FPS`
+- `VISION_STREAM_JPEG_QUALITY`
 - `VISION_SEGMENTATION_CONFIG_PATH`
 
 Defaults:
@@ -80,6 +82,8 @@ VISION_SOURCE_MODE=camera
 VISION_CAMERA_INDEX=0
 VISION_DEBUG_WINDOW_ENABLED=true
 VISION_TELEMETRY_MAX_FPS=10
+VISION_STREAM_MAX_FPS=5
+VISION_STREAM_JPEG_QUALITY=70
 VISION_SEGMENTATION_CONFIG_PATH=road_segmentation.env
 ```
 
@@ -128,6 +132,7 @@ Mensagens de entrada:
 - `client:telemetry`
 - `command:<origem>:<acao>`
 - `config:<chave>=<valor>`
+- `stream:subscribe=<csv_views>`
 
 Compatibilidade:
 
@@ -143,6 +148,7 @@ command:manual:steering=0.25
 command:autonomous:start
 command:autonomous:stop
 config:driving.mode=autonomous
+stream:subscribe=raw,mask,annotated
 ```
 
 Semantica operacional:
@@ -210,6 +216,35 @@ Telemetria publicada:
 }
 ```
 
+Frames de visao publicados sob demanda:
+
+```json
+{
+  "type": "vision.frame",
+  "view": "dashboard",
+  "timestamp_ms": 1710000000000,
+  "mime": "image/jpeg",
+  "width": 1280,
+  "height": 720,
+  "data": "<base64>"
+}
+```
+
+Views suportadas:
+
+- `raw`
+- `preprocess`
+- `mask`
+- `annotated`
+- `dashboard`
+
+Semantica do stream:
+
+- `stream:subscribe=` com lista vazia desliga o envio de frames para aquela sessao.
+- o servidor mantem a assinatura por sessao, sem afetar outros clientes.
+- o `RoadSegmentationService` so renderiza/serializa as views atualmente pedidas.
+- o stream usa o mesmo WebSocket textual existente; nao ha endpoint HTTP/MJPEG separado.
+
 ## Build e testes
 
 ```bash
@@ -225,4 +260,4 @@ No ambiente sem `wiringPi`, os testes e o binario `autonomous_car_v3_vision_debu
 
 - o controle autonomo desta fase atua apenas na direção lateral; o movimento continua como frente/parado
 - o `vision_debug` nao aciona GPIO; ele apenas calcula PID, painel local e telemetria
-- o frame de debug nao e enviado pelo WebSocket; apenas metricas, estado e trajetoria projetada
+- o stream de visao usa JPEG em base64; esta fase prioriza simplicidade de integracao sobre eficiencia binaria maxima

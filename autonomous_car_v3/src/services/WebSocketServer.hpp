@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "common/DrivingMode.hpp"
+#include "services/vision/VisionDebugStream.hpp"
+#include "services/vision/VisionSubscriptionRegistry.hpp"
 #include "services/websocket/ClientRegistry.hpp"
 
 namespace autonomous_car::controllers {
@@ -32,6 +34,8 @@ public:
     void start();
     void stop();
     void broadcastText(const std::string &payload);
+    void broadcastVisionFrame(vision::VisionDebugViewId view, const std::string &payload);
+    [[nodiscard]] vision::VisionDebugViewSet snapshotVisionSubscriptions() const;
 
 private:
     struct ClientSession {
@@ -64,6 +68,7 @@ private:
     std::vector<std::thread> client_threads_;
     std::atomic<std::size_t> next_session_id_{1};
     websocket::ClientRegistry client_registry_;
+    vision::VisionSubscriptionRegistry vision_subscription_registry_;
 };
 
 } // namespace autonomous_car::services

@@ -1,59 +1,56 @@
+import { Badge } from '@/components/ui/badge';
 import { useCurrentTime } from '@/hooks/useCurrentTime';
 import {
-  useVehicleConfig,
-  VEHICLE_CAR_CONNECTION_URL,
-} from '@/providers/VehicleConfigProvider';
-import { Wifi, WifiOff, Activity, Clock } from 'lucide-react';
+  formatConnectionStateLabel,
+  formatDrivingModeLabel,
+} from '@/lib/autonomous-car';
+import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
+import { Activity, Clock, Wifi, WifiOff } from 'lucide-react';
 
 const StatusBar = () => {
-  const { isConnected, config, setConfig } = useVehicleConfig();
   const currentTime = useCurrentTime();
-  const vehicleConfig = useVehicleConfig();
+  const {
+    autonomousControlTelemetry,
+    connectionState,
+    isConnected,
+    lastTelemetryAt,
+    pendingDrivingMode,
+  } = useVehicleConfig();
 
-  const handleConnect = () => {
-    if (isConnected)
-      return (
-        <div className='flex items-center space-x-2 text-xs'>
-          <Wifi className='w-4 h-4' />
-          <span>Conectado ao veículo</span>
-        </div>
-      );
-
-    return (
-      <div
-        className='flex items-center space-x-2 text-xs'
-        role='button'
-        onClick={() =>
-          setConfig({
-            ...config,
-            carConnection: VEHICLE_CAR_CONNECTION_URL,
-          })
-        }
-      >
-        <WifiOff className='w-4 h-4' />
-        <span>Sem conexão com o veículo</span>
-      </div>
-    );
-  };
+  const currentDrivingMode =
+    autonomousControlTelemetry?.driving_mode ?? pendingDrivingMode ?? 'manual';
+  const lastTelemetryLabel = lastTelemetryAt
+    ? new Date(lastTelemetryAt).toLocaleTimeString('pt-BR')
+    : 'Aguardando';
 
   return (
-    <div className='flex w-full items-center justify-end  gap-8 '>
-      {vehicleConfig.currentFrame && (
-        <div className='flex items-center space-x-2 text-xs'>
-          <Activity className='w-4 h-4' />
-          <span>{`${vehicleConfig.currentFrame} FPS`}</span>
-        </div>
-      )}
-
-      <div className='flex items-center space-x-2 text-xs'>
-        {vehicleConfig.config.driveMode.icon}
-        <span>{vehicleConfig.config.driveMode.label}</span>
+    <div className='flex w-full flex-wrap items-center justify-end gap-4 text-xs'>
+      <div className='flex items-center gap-2'>
+        {isConnected ? (
+          <Wifi className='h-4 w-4' />
+        ) : (
+          <WifiOff className='h-4 w-4' />
+        )}
+        <span>{formatConnectionStateLabel(connectionState)}</span>
       </div>
 
-      {handleConnect()}
+      <div className='flex items-center gap-2'>
+        <Activity className='h-4 w-4' />
+        <span>{formatDrivingModeLabel(currentDrivingMode)}</span>
+        {pendingDrivingMode && (
+          <Badge variant='secondary' className='text-[10px]'>
+            sincronizando
+          </Badge>
+        )}
+      </div>
 
-      <div className='flex items-center space-x-2 text-xs'>
-        <Clock className='w-4 h-4' />
+      <div className='flex items-center gap-2'>
+        <Activity className='h-4 w-4' />
+        <span>Ultima telemetria: {lastTelemetryLabel}</span>
+      </div>
+
+      <div className='flex items-center gap-2'>
+        <Clock className='h-4 w-4' />
         <span>{currentTime}</span>
       </div>
     </div>

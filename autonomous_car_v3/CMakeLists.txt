@@ -26,6 +26,9 @@ set(AUTONOMOUS_CAR_V3_COMMON_SOURCES
     src/services/autonomous_control/AutonomousControlTelemetry.cpp
     src/services/road_segmentation/RoadSegmentationTelemetry.cpp
     src/services/road_segmentation/VisionRuntimeConfig.cpp
+    src/services/vision/VisionDebugStream.cpp
+    src/services/vision/VisionDebugViewRenderer.cpp
+    src/services/vision/VisionSubscriptionRegistry.cpp
     src/services/websocket/ClientRegistry.cpp
 )
 
@@ -98,6 +101,7 @@ add_executable(autonomous_car_v3_tests
     tests/AutonomousControlTelemetryTests.cpp
     tests/CommandRouterTests.cpp
     tests/RoadSegmentationTelemetryTests.cpp
+    tests/VisionDebugStreamTests.cpp
     tests/VisionRuntimeConfigTests.cpp
     tests/WebSocketServerTests.cpp
 )

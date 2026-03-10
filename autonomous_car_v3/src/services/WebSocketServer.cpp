@@ -43,7 +43,7 @@ std::string toLower(std::string value) {
     return value;
 }
 
-enum class MessageChannel { Client, Command, Config, Unknown };
+enum class MessageChannel { Client, Command, Config, Stream, Unknown };
 
 struct ParsedMessage {
     MessageChannel channel{MessageChannel::Unknown};
@@ -117,6 +117,19 @@ std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
 
         ParsedMessage parsed;
         parsed.channel = MessageChannel::Config;
+        parsed.key = trim(remainder.substr(0, equals_pos));
+        parsed.value = trim(remainder.substr(equals_pos + 1));
+        return parsed;
+    }
+
+    if (channel_token == "stream") {
+        const auto equals_pos = remainder.find('=');
+        if (equals_pos == std::string::npos) {
+            return std::nullopt;
+        }
+
+        ParsedMessage parsed;
+        parsed.channel = MessageChannel::Stream;
         parsed.key = trim(remainder.substr(0, equals_pos));
         parsed.value = trim(remainder.substr(equals_pos + 1));
         return parsed;
@@ -547,6 +560,30 @@ void WebSocketServer::broadcastText(const std::string &payload) {
     }
 }
 
+void WebSocketServer::broadcastVisionFrame(vision::VisionDebugViewId view,
+                                           const std::string &payload) {
+    const auto sessions = snapshotSessions();
+    for (const auto &session : sessions) {
+        if (!session || !vision_subscription_registry_.hasSubscription(session->id, view)) {
+            continue;
+        }
+
+        std::lock_guard<std::mutex> lock(session->send_mutex);
+        if (!session->alive.load()) {
+            continue;
+        }
+
+        if (!sendTextFrame(session->fd, payload)) {
+            session->alive.store(false);
+            shutdown(session->fd, SHUT_RDWR);
+        }
+    }
+}
+
+vision::VisionDebugViewSet WebSocketServer::snapshotVisionSubscriptions() const {
+    return vision_subscription_registry_.unionOfRequestedViews();
+}
+
 std::vector<WebSocketServer::ClientSessionPtr> WebSocketServer::snapshotSessions() const {
     std::lock_guard<std::mutex> lock(clients_mutex_);
     std::vector<ClientSessionPtr> sessions;
@@ -579,6 +616,7 @@ void WebSocketServer::removeSession(const ClientSessionPtr &session) {
 
     sessions_.erase(session->id);
     client_registry_.removeSession(session->id);
+    vision_subscription_registry_.removeSession(session->id);
 }
 
 void WebSocketServer::shutdownSession(const ClientSessionPtr &session, bool send_close_frame) {
@@ -681,7 +719,7 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
         }
 
         if (parsed_message->channel == MessageChannel::Config) {
-            if (!parsed_message->value) {
+            if (!parsed_message->value || parsed_message->value->empty()) {
                 std::cerr << "Mensagem de configuracao sem valor." << std::endl;
                 continue;
             }
@@ -694,6 +732,24 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
             if (!config_handler_(parsed_message->key, *parsed_message->value)) {
                 std::cerr << "Falha ao aplicar configuracao: " << parsed_message->key
                           << "=" << *parsed_message->value << std::endl;
+            }
+            continue;
+        }
+
+        if (parsed_message->channel == MessageChannel::Stream) {
+            if (parsed_message->key != "subscribe" || !parsed_message->value) {
+                std::cerr << "Mensagem de stream invalida: " << *payload_opt << std::endl;
+                continue;
+            }
+
+            std::vector<std::string> invalid_tokens;
+            auto subscriptions = vision::parseVisionDebugSubscriptionCsv(
+                *parsed_message->value, &invalid_tokens);
+            vision_subscription_registry_.replaceSubscriptions(session->id,
+                                                               std::move(subscriptions));
+
+            for (const auto &token : invalid_tokens) {
+                std::cerr << "View de stream desconhecida ignorada: " << token << std::endl;
             }
             continue;
         }
@@ -778,6 +834,7 @@ void WebSocketServer::run() {
             std::lock_guard<std::mutex> lock(clients_mutex_);
             sessions_[session->id] = session;
             client_registry_.addSession(session->id);
+            vision_subscription_registry_.addSession(session->id);
         }
 
         client_threads_.emplace_back(&WebSocketServer::handleClient, this, session);
