@@ -4,8 +4,16 @@
 
 namespace autonomous_car::controllers {
 
-class [[deprecated("O controle PID da direção está obsoleto até que o pipeline de correção seja reintroduzido")]]
-    PidController {
+struct PidComputation {
+    double error{0.0};
+    double proportional{0.0};
+    double integral{0.0};
+    double derivative{0.0};
+    double raw_output{0.0};
+    double output{0.0};
+};
+
+class PidController {
 public:
     PidController();
 
@@ -14,7 +22,7 @@ public:
     void setIntegralLimits(double min_integral, double max_integral);
 
     void reset();
-    double compute(double target, double measurement, double dt_seconds);
+    [[nodiscard]] PidComputation compute(double error, double dt_seconds);
 
 private:
     double kp_;

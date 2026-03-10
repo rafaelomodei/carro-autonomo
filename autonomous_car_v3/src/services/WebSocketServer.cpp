@@ -22,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-#include "controllers/CommandDispatcher.hpp"
+#include "controllers/CommandRouter.hpp"
 
 namespace {
 constexpr char kWebSocketGuid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -479,12 +479,12 @@ std::optional<autonomous_car::services::websocket::ClientRole> parseClientRole(
 namespace autonomous_car::services {
 
 WebSocketServer::WebSocketServer(const std::string &host, int port,
-                                 controllers::CommandDispatcher &dispatcher,
+                                 controllers::CommandRouter &command_router,
                                  ConfigUpdateHandler config_handler,
                                  DrivingModeProvider mode_provider)
     : host_{host},
       port_{port},
-      dispatcher_{dispatcher},
+      command_router_{command_router},
       config_handler_{std::move(config_handler)},
       driving_mode_provider_{std::move(mode_provider)},
       running_{false},
@@ -650,18 +650,30 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
                 command_source = *parsed_source;
             }
 
-            if (driving_mode_provider_) {
-                const auto current_mode = driving_mode_provider_();
-                if (!isSourceCompatible(command_source, current_mode)) {
-                    std::cerr << "Comando " << parsed_message->key << " ignorado. Origem "
-                              << toString(command_source) << " nao permitida no modo "
-                              << toString(current_mode) << std::endl;
-                    continue;
-                }
+            const auto current_mode =
+                driving_mode_provider_ ? driving_mode_provider_() : DrivingMode::Manual;
+            const auto status =
+                command_router_.route(command_source, parsed_message->key, normalized_value,
+                                      current_mode);
+            if (status == controllers::CommandRouteStatus::Handled) {
+                continue;
             }
 
-            const bool handled = dispatcher_.dispatch(parsed_message->key, normalized_value);
-            if (!handled) {
+            if (status == controllers::CommandRouteStatus::RejectedByMode) {
+                std::cerr << "Comando " << parsed_message->key << " ignorado. Origem "
+                          << toString(command_source) << " nao permitida no modo "
+                          << toString(current_mode) << std::endl;
+                continue;
+            }
+
+            if (status == controllers::CommandRouteStatus::RejectedBySource) {
+                std::cerr << "Comando " << parsed_message->key
+                          << " nao registrado para a origem "
+                          << toString(command_source) << std::endl;
+                continue;
+            }
+
+            if (status == controllers::CommandRouteStatus::UnknownCommand) {
                 std::cerr << "Comando desconhecido recebido: " << parsed_message->key
                           << std::endl;
             }

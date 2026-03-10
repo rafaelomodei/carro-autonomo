@@ -60,25 +60,37 @@ void PidController::reset() {
     has_previous_error_ = false;
 }
 
-double PidController::compute(double target, double measurement, double dt_seconds) {
+PidComputation PidController::compute(double error, double dt_seconds) {
+    PidComputation computation;
+    computation.error = std::isfinite(error) ? error : 0.0;
+
     if (!std::isfinite(dt_seconds) || dt_seconds <= 0.0) {
-        return 0.0;
+        computation.proportional = kp_ * computation.error;
+        computation.raw_output = computation.proportional + ki_ * integral_;
+        computation.output = std::clamp(computation.raw_output, min_output_, max_output_);
+        previous_error_ = computation.error;
+        has_previous_error_ = true;
+        return computation;
     }
 
-    double error = target - measurement;
-    integral_ += error * dt_seconds;
+    integral_ += computation.error * dt_seconds;
     integral_ = std::clamp(integral_, min_integral_, max_integral_);
 
     double derivative = 0.0;
     if (has_previous_error_) {
-        derivative = (error - previous_error_) / dt_seconds;
+        derivative = (computation.error - previous_error_) / dt_seconds;
     }
 
-    previous_error_ = error;
+    previous_error_ = computation.error;
     has_previous_error_ = true;
 
-    double output = kp_ * error + ki_ * integral_ + kd_ * derivative;
-    return std::clamp(output, min_output_, max_output_);
+    computation.proportional = kp_ * computation.error;
+    computation.integral = ki_ * integral_;
+    computation.derivative = kd_ * derivative;
+    computation.raw_output =
+        computation.proportional + computation.integral + computation.derivative;
+    computation.output = std::clamp(computation.raw_output, min_output_, max_output_);
+    return computation;
 }
 
 } // namespace autonomous_car::controllers

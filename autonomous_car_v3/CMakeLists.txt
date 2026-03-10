@@ -16,9 +16,14 @@ add_subdirectory(
 set(AUTONOMOUS_CAR_V3_COMMON_SOURCES
     src/config/ConfigurationManager.cpp
     src/controllers/CommandDispatcher.cpp
+    src/controllers/CommandRouter.cpp
+    src/controllers/PidController.cpp
     src/runtime/ConfigPathResolver.cpp
     src/services/RoadSegmentationService.cpp
     src/services/WebSocketServer.cpp
+    src/services/autonomous_control/AutonomousControlDebugRenderer.cpp
+    src/services/autonomous_control/AutonomousControlService.cpp
+    src/services/autonomous_control/AutonomousControlTelemetry.cpp
     src/services/road_segmentation/RoadSegmentationTelemetry.cpp
     src/services/road_segmentation/VisionRuntimeConfig.cpp
     src/services/websocket/ClientRegistry.cpp
@@ -57,7 +62,6 @@ find_library(WIRINGPI_LIBRARY wiringPi)
 if (WIRINGPI_INCLUDE_DIR AND WIRINGPI_LIBRARY)
     add_executable(${PROJECT_NAME}
         src/main.cpp
-        src/controllers/PidController.cpp
         src/controllers/MotorController.cpp
         src/controllers/SteeringController.cpp
         src/commands/forward/ForwardCommand.cpp
@@ -90,6 +94,9 @@ enable_testing()
 
 add_executable(autonomous_car_v3_tests
     tests/TestMain.cpp
+    tests/AutonomousControlServiceTests.cpp
+    tests/AutonomousControlTelemetryTests.cpp
+    tests/CommandRouterTests.cpp
     tests/RoadSegmentationTelemetryTests.cpp
     tests/VisionRuntimeConfigTests.cpp
     tests/WebSocketServerTests.cpp

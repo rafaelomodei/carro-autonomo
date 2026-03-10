@@ -14,7 +14,7 @@
 #include "services/websocket/ClientRegistry.hpp"
 
 namespace autonomous_car::controllers {
-class CommandDispatcher;
+class CommandRouter;
 }
 
 namespace autonomous_car::services {
@@ -25,7 +25,7 @@ public:
     using DrivingModeProvider = std::function<autonomous_car::DrivingMode()>;
     using ClientRole = websocket::ClientRole;
 
-    WebSocketServer(const std::string &host, int port, controllers::CommandDispatcher &dispatcher,
+    WebSocketServer(const std::string &host, int port, controllers::CommandRouter &command_router,
                     ConfigUpdateHandler config_handler, DrivingModeProvider mode_provider);
     ~WebSocketServer();
 
@@ -53,7 +53,7 @@ private:
 
     std::string host_;
     int port_;
-    controllers::CommandDispatcher &dispatcher_;
+    controllers::CommandRouter &command_router_;
     ConfigUpdateHandler config_handler_;
     DrivingModeProvider driving_mode_provider_;
     std::thread server_thread_;
