@@ -32,6 +32,7 @@ import {
   VEHICLE_RUNTIME_STORAGE_KEY,
   normalizeVehicleRuntimeConfig,
 } from '@/lib/autonomous-car';
+import { emitTelemetryReceived, emitUiLogEvent } from '@/lib/vehicle-events';
 import { isValidWebSocketUrl } from '@/lib/websocket';
 
 interface VehicleConfigContextProps {
@@ -39,6 +40,7 @@ interface VehicleConfigContextProps {
   connectionState: ConnectionState;
   isConnected: boolean;
   lastTelemetryAt: number | null;
+  effectiveDrivingMode: DrivingMode;
   pendingDrivingMode: DrivingMode | null;
   pendingAutonomousCommand: 'start' | 'stop' | null;
   roadSegmentationTelemetry: RoadSegmentationTelemetry | null;
@@ -46,10 +48,20 @@ interface VehicleConfigContextProps {
   canSendManualCommands: boolean;
   saveConnectionUrl: (url: string) => void;
   setDrivingMode: (mode: DrivingMode) => void;
+  toggleDrivingMode: () => void;
   startAutonomous: () => void;
   stopAutonomous: () => void;
   sendManualMotion: (command: ManualMotionCommand) => boolean;
   sendManualSteering: (command: ManualSteeringCommand) => boolean;
+  beginManualMotionHold: (
+    direction: Exclude<ManualMotionCommand, 'stop'>
+  ) => void;
+  endManualMotionHold: () => void;
+  beginManualSteeringHold: (
+    direction: Exclude<ManualSteeringCommand, 'center'>
+  ) => void;
+  endManualSteeringHold: () => void;
+  stopManualControl: () => void;
   updateRuntimeSetting: (key: RuntimeSettingKey, value: number) => void;
 }
 
@@ -125,12 +137,12 @@ export const VehicleConfigProvider = ({
 
   const isConnected =
     connectionState === 'connected' || connectionState === 'telemetry_stale';
-  const controlDrivingMode =
+  const effectiveDrivingMode =
     pendingDrivingMode === 'autonomous'
       ? 'autonomous'
       : autonomousControlTelemetry?.driving_mode ?? pendingDrivingMode ?? 'manual';
   const canSendManualCommands =
-    isConnected && controlDrivingMode === 'manual';
+    isConnected && effectiveDrivingMode === 'manual';
 
   manualControlAllowedRef.current = canSendManualCommands;
 
@@ -370,8 +382,14 @@ export const VehicleConfigProvider = ({
           return;
         }
 
-        setLastTelemetryAt(Date.now());
+        const receivedAtMs = Date.now();
+
+        setLastTelemetryAt(receivedAtMs);
         setConnectionState('connected');
+        emitTelemetryReceived({
+          message: parsedMessage,
+          receivedAtMs,
+        });
 
         if (parsedMessage.type === 'telemetry.road_segmentation') {
           setRoadSegmentationTelemetry(parsedMessage);
@@ -487,87 +505,6 @@ export const VehicleConfigProvider = ({
     };
   }, [isHydrated, lastTelemetryAt]);
 
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
-    const isInteractiveElement = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) {
-        return false;
-      }
-
-      return (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT' ||
-        target.isContentEditable
-      );
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || isInteractiveElement(event.target)) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-
-      switch (key) {
-        case 'w':
-          event.preventDefault();
-          startMotionLoopRef.current('forward');
-          break;
-        case 's':
-          event.preventDefault();
-          startMotionLoopRef.current('backward');
-          break;
-        case 'a':
-          event.preventDefault();
-          startSteeringLoopRef.current('left');
-          break;
-        case 'd':
-          event.preventDefault();
-          startSteeringLoopRef.current('right');
-          break;
-        case ' ':
-          event.preventDefault();
-          clearActiveManualLoopsRef.current(true);
-          break;
-        default:
-          break;
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (isInteractiveElement(event.target)) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-
-      switch (key) {
-        case 'w':
-        case 's':
-          clearMotionLoopRef.current(true);
-          break;
-        case 'a':
-        case 'd':
-          clearSteeringLoopRef.current(true);
-          break;
-        default:
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [isHydrated]);
-
   const saveConnectionUrl = (url: string) => {
     const normalizedUrl = url.trim();
 
@@ -590,6 +527,9 @@ export const VehicleConfigProvider = ({
     clearActiveManualLoopsRef.current(false);
 
     if (sendTextMessageRef.current(buildDrivingModeMessage(mode))) {
+      emitUiLogEvent('control.driving_mode_requested', {
+        mode,
+      });
       setPendingDrivingMode(mode);
 
       if (mode === 'manual') {
@@ -598,16 +538,22 @@ export const VehicleConfigProvider = ({
     }
   };
 
+  const toggleDrivingMode = () => {
+    setDrivingMode(effectiveDrivingMode === 'manual' ? 'autonomous' : 'manual');
+  };
+
   const startAutonomous = () => {
     clearActiveManualLoopsRef.current(false);
 
     if (sendTextMessageRef.current(buildAutonomousCommandMessage('start'))) {
+      emitUiLogEvent('control.autonomous_start_requested', null);
       setPendingAutonomousCommand('start');
     }
   };
 
   const stopAutonomous = () => {
     if (sendTextMessageRef.current(buildAutonomousCommandMessage('stop'))) {
+      emitUiLogEvent('control.autonomous_stop_requested', null);
       setPendingAutonomousCommand('stop');
     }
   };
@@ -628,6 +574,12 @@ export const VehicleConfigProvider = ({
     return sendTextMessageRef.current(buildManualSteeringMessage(command));
   };
 
+  useEffect(() => {
+    emitUiLogEvent('control.connection_state_changed', {
+      state: connectionState,
+    });
+  }, [connectionState]);
+
   return (
     <VehicleConfigContext.Provider
       value={{
@@ -635,6 +587,7 @@ export const VehicleConfigProvider = ({
         connectionState,
         isConnected,
         lastTelemetryAt,
+        effectiveDrivingMode,
         pendingDrivingMode,
         pendingAutonomousCommand,
         roadSegmentationTelemetry,
@@ -642,10 +595,19 @@ export const VehicleConfigProvider = ({
         canSendManualCommands,
         saveConnectionUrl,
         setDrivingMode,
+        toggleDrivingMode,
         startAutonomous,
         stopAutonomous,
         sendManualMotion,
         sendManualSteering,
+        beginManualMotionHold: startMotionLoopRef.current,
+        endManualMotionHold: () =>
+          clearMotionLoopRef.current(manualControlAllowedRef.current),
+        beginManualSteeringHold: startSteeringLoopRef.current,
+        endManualSteeringHold: () =>
+          clearSteeringLoopRef.current(manualControlAllowedRef.current),
+        stopManualControl: () =>
+          clearActiveManualLoopsRef.current(manualControlAllowedRef.current),
         updateRuntimeSetting,
       }}
     >

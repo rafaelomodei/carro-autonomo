@@ -4,6 +4,9 @@ import NextAuthSessionProvider from '@/providers/nextAuthSessionProvider';
 import { ThemeProvider } from '@/providers/themeProvider';
 import { DestinationProvider } from '@/providers/DestinationProvider';
 import { VehicleConfigProvider } from '@/providers/VehicleConfigProvider';
+import { VehicleVisionProvider } from '@/providers/VehicleVisionProvider';
+import { VehicleLoggingProvider } from '@/providers/VehicleLoggingProvider';
+import GlobalVehicleShortcuts from '@/components/system/GlobalVehicleShortcuts';
 
 export const metadata: Metadata = {
   title: 'Carro autônomo',
@@ -27,7 +30,14 @@ export default function RootLayout({
           <NextAuthSessionProvider>
             <div className='h-full w-full flex flex-col md:px-4 lg:px-8'>
               <DestinationProvider>
-                <VehicleConfigProvider>{children}</VehicleConfigProvider>
+                <VehicleConfigProvider>
+                  <VehicleVisionProvider>
+                    <VehicleLoggingProvider>
+                      <GlobalVehicleShortcuts />
+                      {children}
+                    </VehicleLoggingProvider>
+                  </VehicleVisionProvider>
+                </VehicleConfigProvider>
               </DestinationProvider>
             </div>
           </NextAuthSessionProvider>
