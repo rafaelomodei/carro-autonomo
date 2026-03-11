@@ -27,6 +27,7 @@ import {
   RECONNECT_DELAYS_MS,
   RoadSegmentationTelemetry,
   RuntimeSettingKey,
+  TrafficSignDetectionTelemetry,
   TELEMETRY_STALE_THRESHOLD_MS,
   VehicleRuntimeConfig,
   VEHICLE_RUNTIME_STORAGE_KEY,
@@ -45,6 +46,7 @@ interface VehicleConfigContextProps {
   pendingAutonomousCommand: 'start' | 'stop' | null;
   roadSegmentationTelemetry: RoadSegmentationTelemetry | null;
   autonomousControlTelemetry: AutonomousControlTelemetry | null;
+  trafficSignDetectionTelemetry: TrafficSignDetectionTelemetry | null;
   canSendManualCommands: boolean;
   saveConnectionUrl: (url: string) => void;
   setDrivingMode: (mode: DrivingMode) => void;
@@ -99,6 +101,8 @@ export const VehicleConfigProvider = ({
     useState<RoadSegmentationTelemetry | null>(null);
   const [autonomousControlTelemetry, setAutonomousControlTelemetry] =
     useState<AutonomousControlTelemetry | null>(null);
+  const [trafficSignDetectionTelemetry, setTrafficSignDetectionTelemetry] =
+    useState<TrafficSignDetectionTelemetry | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -396,6 +400,11 @@ export const VehicleConfigProvider = ({
           return;
         }
 
+        if (parsedMessage.type === 'telemetry.traffic_sign_detection') {
+          setTrafficSignDetectionTelemetry(parsedMessage);
+          return;
+        }
+
         setAutonomousControlTelemetry(parsedMessage);
 
         if (pendingDrivingModeRef.current === parsedMessage.driving_mode) {
@@ -592,6 +601,7 @@ export const VehicleConfigProvider = ({
         pendingAutonomousCommand,
         roadSegmentationTelemetry,
         autonomousControlTelemetry,
+        trafficSignDetectionTelemetry,
         canSendManualCommands,
         saveConnectionUrl,
         setDrivingMode,

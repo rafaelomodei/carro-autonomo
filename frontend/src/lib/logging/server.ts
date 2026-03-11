@@ -19,6 +19,7 @@ import {
   SessionStartRequest,
   SessionStartResponse,
   SessionVideoOutput,
+  TRAFFIC_SIGN_DETECTION_CSV_HEADERS,
   UiLogEventRecord,
 } from '@/lib/logging/shared';
 
@@ -94,6 +95,10 @@ export const initializeSession = async (
   await ensureCsvFile(
     resolveSessionFile(sessionId, 'telemetry', 'autonomous_control_timeseries.csv'),
     AUTONOMOUS_CONTROL_CSV_HEADERS
+  );
+  await ensureCsvFile(
+    resolveSessionFile(sessionId, 'telemetry', 'traffic_sign_detection_timeseries.csv'),
+    TRAFFIC_SIGN_DETECTION_CSV_HEADERS
   );
 
   await writeFile(
@@ -191,6 +196,15 @@ export const appendSessionData = async (
       resolveSessionFile(sessionId, 'telemetry', 'autonomous_control_timeseries.csv'),
       payload.autonomous_control_rows
         .map((row) => serializeCsvRow(AUTONOMOUS_CONTROL_CSV_HEADERS, row))
+        .join('')
+    );
+  }
+
+  if (payload.traffic_sign_detection_rows?.length) {
+    await appendFile(
+      resolveSessionFile(sessionId, 'telemetry', 'traffic_sign_detection_timeseries.csv'),
+      payload.traffic_sign_detection_rows
+        .map((row) => serializeCsvRow(TRAFFIC_SIGN_DETECTION_CSV_HEADERS, row))
         .join('')
     );
   }

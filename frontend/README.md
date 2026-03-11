@@ -68,6 +68,7 @@ command:autonomous:stop
 O frontend interpreta apenas:
 
 - `telemetry.road_segmentation`
+- `telemetry.traffic_sign_detection`
 - `telemetry.autonomous_control`
 - `vision.frame` em uma segunda conexao WebSocket dedicada ao stream de visao
 
@@ -111,6 +112,7 @@ Views suportadas:
 - `Settings` controla conexao, modo de conducao, `start/stop` autonomo, `steering.sensitivity`, `steering.command_step` e `Kp/Ki/Kd`.
 - `Joystick` opera em modo `segurar para mover`: enquanto o botao ou tecla estiver pressionado, o frontend reenfileira comandos manuais em intervalo curto para nao estourar o timeout do backend.
 - `Debug` virou a central de visao: seleciona views, abre o stream sob demanda e combina os frames com a telemetria recebida no socket de controle.
+- `Home` mostra a ultima sinalizacao confirmada pelo detector de placas.
 - O frontend persiste localmente a URL do WebSocket e os ajustes de runtime que ele controla, reaplicando-os quando reconecta.
 - `command:autonomous:start` nao e reenviado automaticamente em reconexoes.
 
@@ -132,7 +134,7 @@ Estados publicos usados na UI:
 
 - Nao ha compatibilidade com o protocolo JSON antigo do frontend.
 - O stream de visao usa JSON + JPEG em base64, nao blobs binarios.
-- Nao ha painel de `signals` legado.
+- A UI depende do catalogo atual de placas (`stop`, `turn_left`, `turn_right`).
 - O frontend nao recebe snapshot completo das configuracoes do backend; ele reaplica apenas os parametros que controla.
 
 ## Vercel

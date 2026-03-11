@@ -1,6 +1,7 @@
 #include "services/autonomous_control/AutonomousControlDebugRenderer.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 #include <vector>
@@ -21,7 +22,7 @@ const cv::Scalar kNeutralColor{0, 215, 255};
 const cv::Scalar kWarningColor{0, 140, 255};
 const cv::Scalar kDangerColor{0, 0, 255};
 constexpr int kPanelWidth = 360;
-
+constexpr int kDashboardCardSidebarWidth = 250;
 cv::Scalar stateColor(const AutonomousControlSnapshot &snapshot) {
     switch (snapshot.tracking_state) {
     case TrackingState::Tracking:
@@ -43,14 +44,20 @@ cv::Scalar stateColor(const AutonomousControlSnapshot &snapshot) {
 cv::Mat AutonomousControlDebugRenderer::render(
     const road_segmentation_lab::pipeline::RoadSegmentationResult &result,
     const road_segmentation_lab::config::LabConfig &config, const std::string &source_label,
-    const std::string &calibration_status, const AutonomousControlSnapshot &snapshot) const {
+    const std::string &calibration_status, const AutonomousControlSnapshot &snapshot,
+    const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
+        &traffic_signs) const {
     cv::Mat segmentation_panel =
         segmentation_renderer_.render(result, config, source_label, calibration_status);
     if (segmentation_panel.empty()) {
         return segmentation_panel;
     }
 
+    overlayTrafficSignsOnDashboard(segmentation_panel, traffic_signs, result.resized_frame.size());
+
     cv::Mat control_panel = buildControlPanel(snapshot, {kPanelWidth, segmentation_panel.rows});
+    drawTrafficSignStatus(control_panel, traffic_signs,
+                          {18, 166, control_panel.cols - 36, 98});
     cv::Mat full_panel;
     cv::hconcat(segmentation_panel, control_panel, full_panel);
     return full_panel;
@@ -60,8 +67,8 @@ cv::Mat AutonomousControlDebugRenderer::buildControlPanel(const AutonomousContro
                                                           cv::Size size) {
     cv::Mat panel(size, CV_8UC3, kPanelBackground);
     drawControlStatus(panel, snapshot);
-    drawSteeringGauge(panel, snapshot, {22, 132, panel.cols - 44, 130});
-    drawTopDownPreview(panel, snapshot, {22, 290, panel.cols - 44, panel.rows - 312});
+    drawSteeringGauge(panel, snapshot, {22, 280, panel.cols - 44, 82});
+    drawTopDownPreview(panel, snapshot, {22, 376, panel.cols - 44, panel.rows - 398});
     cv::rectangle(panel, {0, 0}, {panel.cols - 1, panel.rows - 1}, kPanelBorder, 1, cv::LINE_AA);
     return panel;
 }
@@ -77,13 +84,8 @@ void AutonomousControlDebugRenderer::drawControlStatus(cv::Mat &panel,
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, kTextSecondary, 1, cv::LINE_AA);
     cv::putText(panel, "Estado: " + std::string(toString(snapshot.tracking_state)), {32, 94},
                 cv::FONT_HERSHEY_SIMPLEX, 0.52, stateColor(snapshot), 1, cv::LINE_AA);
-    cv::putText(panel,
-                "Start: " + std::string(snapshot.autonomous_started ? "on" : "off") +
-                    " | Motion: " + std::string(toString(snapshot.motion_command)),
-                {32, 116}, cv::FONT_HERSHEY_SIMPLEX, 0.45, kTextSecondary, 1, cv::LINE_AA);
-
     const int x = 32;
-    int y = 156;
+    int y = 116;
     const auto draw_line = [&](const std::string &text, const cv::Scalar &color = kTextSecondary) {
         cv::putText(panel, text, {x, y}, cv::FONT_HERSHEY_SIMPLEX, 0.46, color, 1, cv::LINE_AA);
         y += 20;
@@ -113,6 +115,58 @@ void AutonomousControlDebugRenderer::drawControlStatus(cv::Mat &panel,
               std::string(snapshot.curvature_valid
                               ? formatDouble(snapshot.curvature_indicator_rad)
                               : "missing"));
+}
+
+void AutonomousControlDebugRenderer::drawTrafficSignStatus(
+    cv::Mat &panel,
+    const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult &traffic_signs,
+    const cv::Rect &area) {
+    namespace ts = autonomous_car::services::traffic_sign_detection;
+
+    cv::rectangle(panel, area, kPanelSection, cv::FILLED);
+    cv::rectangle(panel, area, kPanelBorder, 1, cv::LINE_AA);
+    cv::putText(panel, "Sinalizacao", {area.x + 14, area.y + 24}, cv::FONT_HERSHEY_SIMPLEX, 0.52,
+                kTextPrimary, 1, cv::LINE_AA);
+    cv::putText(panel,
+                "Estado: " + std::string(ts::toString(traffic_signs.detector_state)),
+                {area.x + 14, area.y + 48}, cv::FONT_HERSHEY_SIMPLEX, 0.45, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "ROI: " + std::to_string(traffic_signs.roi.width) + "x" +
+                    std::to_string(traffic_signs.roi.height) + " @ x=" +
+                    std::to_string(traffic_signs.roi.x),
+                {area.x + 14, area.y + 68}, cv::FONT_HERSHEY_SIMPLEX, 0.44, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "Brutas: " + std::to_string(traffic_signs.raw_detections.size()),
+                {area.x + 14, area.y + 88}, cv::FONT_HERSHEY_SIMPLEX, 0.44, kTextSecondary, 1,
+                cv::LINE_AA);
+
+    int y = area.y + 56;
+    const auto draw_entry = [&](const std::string &prefix,
+                                const std::optional<ts::StabilizedTrafficSignDetection>
+                                    &detection,
+                                const cv::Scalar &color) {
+        const std::string text = detection.has_value()
+                                     ? prefix + ": " + detection->display_label + " " +
+                                           std::to_string(static_cast<int>(std::lround(
+                                               detection->confidence_score * 100.0))) +
+                                           "% (" +
+                                           std::to_string(detection->consecutive_frames) + "/" +
+                                           std::to_string(detection->required_frames) + ")"
+                                     : prefix + ": none";
+        cv::putText(panel, text, {area.x + 14, y}, cv::FONT_HERSHEY_SIMPLEX, 0.42, color, 1,
+                    cv::LINE_AA);
+        y += 18;
+    };
+
+    draw_entry("Candidate", traffic_signs.candidate, kWarningColor);
+    draw_entry("Active", traffic_signs.active_detection, kPositiveColor);
+
+    if (!traffic_signs.last_error.empty()) {
+        cv::putText(panel, traffic_signs.last_error, {area.x + 14, y},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.38, kDangerColor, 1, cv::LINE_AA);
+    }
 }
 
 void AutonomousControlDebugRenderer::drawSteeringGauge(cv::Mat &panel,
@@ -189,6 +243,62 @@ void AutonomousControlDebugRenderer::drawTopDownPreview(
         }
         cv::polylines(panel, path, false, stateColor(snapshot), 3, cv::LINE_AA);
     }
+}
+
+void AutonomousControlDebugRenderer::overlayTrafficSignsOnDashboard(
+    cv::Mat &panel,
+    const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
+        &traffic_signs,
+    cv::Size frame_size) {
+    namespace ts = autonomous_car::services::traffic_sign_detection;
+
+    if (panel.empty() || frame_size.width <= 0 || frame_size.height <= 0 || !traffic_signs.enabled) {
+        return;
+    }
+
+    const int card_width = frame_size.width + kDashboardCardSidebarWidth;
+    const cv::Point raw_offset(0, 0);
+    const cv::Point annotated_offset(card_width, frame_size.height);
+
+    const auto draw_overlay =
+        [&](const cv::Point &offset, const cv::Scalar &color,
+            const std::optional<ts::StabilizedTrafficSignDetection> &preferred_detection) {
+            const cv::Rect roi_rect(traffic_signs.roi.x + offset.x, traffic_signs.roi.y + offset.y,
+                                    traffic_signs.roi.width, traffic_signs.roi.height);
+            if (roi_rect.area() > 0) {
+                cv::rectangle(panel, roi_rect, {255, 160, 0}, 2, cv::LINE_AA);
+            }
+
+            for (const auto &detection : traffic_signs.raw_detections) {
+                const cv::Rect box(detection.bbox_frame.x + offset.x,
+                                   detection.bbox_frame.y + offset.y,
+                                   detection.bbox_frame.width, detection.bbox_frame.height);
+                if (box.area() <= 0) {
+                    continue;
+                }
+
+                cv::rectangle(panel, box, color, 2, cv::LINE_AA);
+            }
+
+            if (preferred_detection.has_value()) {
+                const cv::Rect box(preferred_detection->bbox_frame.x + offset.x,
+                                   preferred_detection->bbox_frame.y + offset.y,
+                                   preferred_detection->bbox_frame.width,
+                                   preferred_detection->bbox_frame.height);
+                if (box.area() > 0) {
+                    cv::rectangle(panel, box, {60, 220, 120}, 3, cv::LINE_AA);
+                    cv::putText(panel, preferred_detection->display_label, {box.x, std::max(18, box.y - 6)},
+                                cv::FONT_HERSHEY_SIMPLEX, 0.45, {60, 220, 120}, 1, cv::LINE_AA);
+                }
+            }
+        };
+
+    draw_overlay(raw_offset, {60, 220, 255},
+                 traffic_signs.active_detection.has_value() ? traffic_signs.active_detection
+                                                            : traffic_signs.candidate);
+    draw_overlay(annotated_offset, {60, 220, 255},
+                 traffic_signs.active_detection.has_value() ? traffic_signs.active_detection
+                                                            : traffic_signs.candidate);
 }
 
 int AutonomousControlDebugRenderer::mapNormalizedX(double x, const cv::Rect &area) {

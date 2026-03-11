@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>Vire a direita</title>
+  <rect x="8" y="8" width="112" height="112" rx="12" fill="#ffffff" stroke="#111827" stroke-width="8"/>
+  <circle cx="64" cy="64" r="38" fill="#1d4ed8"/>
+  <path d="M50 44h28v10H66v24l18-18 7 7-30 30-30-30 7-7 18 18V54H50z" fill="#ffffff"/>
+</svg>

@@ -1,85 +1,30 @@
+import type { TrafficSignId } from '@/lib/autonomous-car';
 import { IMAGES } from '@/assets';
 
-export type SignalType = 'VERTICAL' | 'HORIZONTAL';
-
-export interface TrafficSignal {
-  id: string;
+export interface TrafficSignalCatalogItem {
+  id: TrafficSignId;
   label: string;
-  type: SignalType;
-  iconUrl?: string;
-  confidence?: number;
+  iconUrl: string;
 }
 
-export const TRAFFIC_SIGNS: TrafficSignal[] = [
-  {
+export const TRAFFIC_SIGN_CATALOG: Record<TrafficSignId, TrafficSignalCatalogItem> = {
+  stop: {
     id: 'stop',
-    label: 'Parada obrigatória',
+    label: 'Parada obrigatoria',
     iconUrl: IMAGES.trafficSigns.r1ParadaObrigatoria,
-    type: 'VERTICAL',
   },
-  {
-    id: 'parking',
-    label: 'Estacionamento',
-    iconUrl: IMAGES.trafficSigns.r6bEstacionamentoRegulamentado,
-    type: 'VERTICAL',
+  turn_left: {
+    id: 'turn_left',
+    label: 'Vire a esquerda',
+    iconUrl: IMAGES.trafficSigns.r3bVireAEsquerda,
   },
-  {
-    id: 'dest_a',
-    label: 'Destino A',
-    iconUrl: '/icons/destino-a.png',
-    type: 'VERTICAL',
+  turn_right: {
+    id: 'turn_right',
+    label: 'Vire a direita',
+    iconUrl: IMAGES.trafficSigns.r3aVireADireita,
   },
-  {
-    id: 'dest_b',
-    label: 'Destino B',
-    iconUrl: '/icons/destino-b.png',
-    type: 'VERTICAL',
-  },
-  {
-    id: 'dest_c',
-    label: 'Destino C',
-    iconUrl: '/icons/destino-c.png',
-    type: 'VERTICAL',
-  },
-  {
-    id: 'left_lane',
-    label: 'Faixa à esquerda',
-    iconUrl: '/icons/left-lane.png',
-    type: 'HORIZONTAL',
-  },
-  {
-    id: 'right_lane',
-    label: 'Faixa à direita',
-    iconUrl: '/icons/right-lane.png',
-    type: 'HORIZONTAL',
-  },
-];
-
-export const mockRecognizedSignals: Record<
-  'VERTICAL' | 'HORIZONTAL',
-  TrafficSignal[]
-> = {
-  VERTICAL: [
-    {
-      id: 'stop',
-      label: 'Parada obrigatória',
-      iconUrl: IMAGES.trafficSigns.r1ParadaObrigatoria,
-      type: 'VERTICAL',
-      confidence: 46,
-    },
-  ],
-  HORIZONTAL: [
-    {
-      id: 'left_lane',
-      label: 'Faixa à esquerda',
-      type: 'HORIZONTAL',
-      confidence: 92,
-    },
-    {
-      id: 'right_lane',
-      label: 'Faixa à direita',
-      type: 'HORIZONTAL',
-      confidence: 85,
-    },
-  ],
 };
+
+export const getTrafficSignCatalogItem = (
+  signId: TrafficSignId
+): TrafficSignalCatalogItem => TRAFFIC_SIGN_CATALOG[signId];

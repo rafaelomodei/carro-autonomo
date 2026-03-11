@@ -15,6 +15,7 @@ import {
   createEmptyTelemetryCounts,
   flattenAutonomousControlTelemetry,
   flattenRoadSegmentationTelemetry,
+  flattenTrafficSignDetectionTelemetry,
   RECORDING_VIEW_IDS,
   RecordingState,
   RecordingViewId,
@@ -73,6 +74,7 @@ const hasAppendPayloadContent = (payload: AppendSessionRequest) =>
     payload.telemetry_raw?.length ||
       payload.road_segmentation_rows?.length ||
       payload.autonomous_control_rows?.length ||
+      payload.traffic_sign_detection_rows?.length ||
       payload.ui_events?.length ||
       payload.frame_index?.length
   );
@@ -201,6 +203,13 @@ export const VehicleLoggingProvider = ({
       flushQueueRef.current.autonomous_control_rows = [
         ...(flushQueueRef.current.autonomous_control_rows ?? []),
         ...payload.autonomous_control_rows,
+      ];
+    }
+
+    if (payload.traffic_sign_detection_rows?.length) {
+      flushQueueRef.current.traffic_sign_detection_rows = [
+        ...(flushQueueRef.current.traffic_sign_detection_rows ?? []),
+        ...payload.traffic_sign_detection_rows,
       ];
     }
 
@@ -701,6 +710,16 @@ export const VehicleLoggingProvider = ({
         mergeAppendPayload({
           road_segmentation_rows: [
             flattenRoadSegmentationTelemetry(detail.message, detail.receivedAtMs),
+          ],
+        });
+        return;
+      }
+
+      if (detail.message.type === 'telemetry.traffic_sign_detection') {
+        telemetryCountsRef.current.traffic_sign_detection += 1;
+        mergeAppendPayload({
+          traffic_sign_detection_rows: [
+            flattenTrafficSignDetectionTelemetry(detail.message, detail.receivedAtMs),
           ],
         });
         return;

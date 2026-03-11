@@ -1,6 +1,7 @@
 import type {
   AutonomousControlTelemetry,
   RoadSegmentationTelemetry,
+  TrafficSignDetectionTelemetry,
 } from '@/lib/autonomous-car';
 
 export const RECORDING_VIEW_IDS = [
@@ -17,8 +18,14 @@ export type ConversionState = 'idle' | 'converting' | 'completed' | 'failed';
 
 export interface TelemetryRawRecord {
   received_at_ms: number;
-  type: RoadSegmentationTelemetry['type'] | AutonomousControlTelemetry['type'];
-  payload: RoadSegmentationTelemetry | AutonomousControlTelemetry;
+  type:
+    | RoadSegmentationTelemetry['type']
+    | AutonomousControlTelemetry['type']
+    | TrafficSignDetectionTelemetry['type'];
+  payload:
+    | RoadSegmentationTelemetry
+    | AutonomousControlTelemetry
+    | TrafficSignDetectionTelemetry;
 }
 
 export interface UiLogEventRecord {
@@ -39,6 +46,7 @@ export interface SessionTelemetryCounts {
   telemetry_raw: number;
   road_segmentation: number;
   autonomous_control: number;
+  traffic_sign_detection: number;
   ui_events: number;
   frame_index: number;
 }
@@ -169,6 +177,34 @@ export const AUTONOMOUS_CONTROL_CSV_HEADERS = [
   'projected_path_json',
 ] as const;
 
+export const TRAFFIC_SIGN_DETECTION_CSV_HEADERS = [
+  'timestamp_ms',
+  'received_at_ms',
+  'source',
+  'detector_state',
+  'roi_x',
+  'roi_y',
+  'roi_width',
+  'roi_height',
+  'roi_right_width_ratio',
+  'roi_top_ratio',
+  'roi_bottom_ratio',
+  'raw_detection_count',
+  'candidate_sign_id',
+  'candidate_display_label',
+  'candidate_confidence_score',
+  'candidate_consecutive_frames',
+  'candidate_required_frames',
+  'candidate_last_seen_at_ms',
+  'active_sign_id',
+  'active_display_label',
+  'active_confidence_score',
+  'active_confirmed_at_ms',
+  'active_last_seen_at_ms',
+  'raw_detections_json',
+  'last_error',
+] as const;
+
 export type RoadSegmentationCsvRow = Record<
   (typeof ROAD_SEGMENTATION_CSV_HEADERS)[number],
   boolean | number | string | null
@@ -179,10 +215,16 @@ export type AutonomousControlCsvRow = Record<
   boolean | number | string | null
 >;
 
+export type TrafficSignDetectionCsvRow = Record<
+  (typeof TRAFFIC_SIGN_DETECTION_CSV_HEADERS)[number],
+  boolean | number | string | null
+>;
+
 export interface AppendSessionRequest {
   telemetry_raw?: TelemetryRawRecord[];
   road_segmentation_rows?: RoadSegmentationCsvRow[];
   autonomous_control_rows?: AutonomousControlCsvRow[];
+  traffic_sign_detection_rows?: TrafficSignDetectionCsvRow[];
   ui_events?: UiLogEventRecord[];
   frame_index?: VisionFrameIndexRecord[];
 }
@@ -191,6 +233,7 @@ export const createEmptyTelemetryCounts = (): SessionTelemetryCounts => ({
   telemetry_raw: 0,
   road_segmentation: 0,
   autonomous_control: 0,
+  traffic_sign_detection: 0,
   ui_events: 0,
   frame_index: 0,
 });
@@ -299,6 +342,37 @@ export const flattenAutonomousControlTelemetry = (
   steering_command: telemetry.steering_command,
   motion_command: telemetry.motion_command,
   projected_path_json: stringifyProjectedPath(telemetry.projected_path),
+});
+
+export const flattenTrafficSignDetectionTelemetry = (
+  telemetry: TrafficSignDetectionTelemetry,
+  receivedAtMs: number
+): TrafficSignDetectionCsvRow => ({
+  timestamp_ms: telemetry.timestamp_ms,
+  received_at_ms: receivedAtMs,
+  source: telemetry.source,
+  detector_state: telemetry.detector_state,
+  roi_x: telemetry.roi.x,
+  roi_y: telemetry.roi.y,
+  roi_width: telemetry.roi.width,
+  roi_height: telemetry.roi.height,
+  roi_right_width_ratio: telemetry.roi.right_width_ratio,
+  roi_top_ratio: telemetry.roi.top_ratio,
+  roi_bottom_ratio: telemetry.roi.bottom_ratio,
+  raw_detection_count: telemetry.raw_detections.length,
+  candidate_sign_id: telemetry.candidate?.sign_id ?? null,
+  candidate_display_label: telemetry.candidate?.display_label ?? null,
+  candidate_confidence_score: telemetry.candidate?.confidence_score ?? null,
+  candidate_consecutive_frames: telemetry.candidate?.consecutive_frames ?? null,
+  candidate_required_frames: telemetry.candidate?.required_frames ?? null,
+  candidate_last_seen_at_ms: telemetry.candidate?.last_seen_at_ms ?? null,
+  active_sign_id: telemetry.active_detection?.sign_id ?? null,
+  active_display_label: telemetry.active_detection?.display_label ?? null,
+  active_confidence_score: telemetry.active_detection?.confidence_score ?? null,
+  active_confirmed_at_ms: telemetry.active_detection?.confirmed_at_ms ?? null,
+  active_last_seen_at_ms: telemetry.active_detection?.last_seen_at_ms ?? null,
+  raw_detections_json: JSON.stringify(telemetry.raw_detections),
+  last_error: telemetry.last_error ?? null,
 });
 
 export const serializeCsvValue = (value: boolean | number | string | null) => {

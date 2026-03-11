@@ -112,9 +112,59 @@ export interface VisionFrameMessage {
   data: string;
 }
 
+export type TrafficSignId = 'stop' | 'turn_left' | 'turn_right';
+export type TrafficSignDetectorState =
+  | 'disabled'
+  | 'idle'
+  | 'candidate'
+  | 'confirmed'
+  | 'error';
+
+export interface TrafficSignBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface TrafficSignRoiTelemetry extends TrafficSignBoundingBox {
+  right_width_ratio: number;
+  top_ratio: number;
+  bottom_ratio: number;
+}
+
+export interface TrafficSignDetection {
+  sign_id: TrafficSignId;
+  model_label: string;
+  display_label: string;
+  confidence_score: number;
+  bbox_frame: TrafficSignBoundingBox;
+  bbox_roi: TrafficSignBoundingBox;
+}
+
+export interface StabilizedTrafficSignDetection extends TrafficSignDetection {
+  consecutive_frames: number;
+  required_frames: number;
+  confirmed_at_ms: number | null;
+  last_seen_at_ms: number;
+}
+
+export interface TrafficSignDetectionTelemetry {
+  type: 'telemetry.traffic_sign_detection';
+  timestamp_ms: number;
+  source: string;
+  detector_state: TrafficSignDetectorState;
+  roi: TrafficSignRoiTelemetry;
+  raw_detections: TrafficSignDetection[];
+  candidate: StabilizedTrafficSignDetection | null;
+  active_detection: StabilizedTrafficSignDetection | null;
+  last_error: string | null;
+}
+
 export type VehicleTelemetryMessage =
   | RoadSegmentationTelemetry
-  | AutonomousControlTelemetry;
+  | AutonomousControlTelemetry
+  | TrafficSignDetectionTelemetry;
 
 export const DEFAULT_VEHICLE_CONNECTION_URL =
   process.env.NEXT_PUBLIC_DEFAULT_VEHICLE_WS_URL?.trim() ||
@@ -159,7 +209,8 @@ export const parseTelemetryMessage = (
       parsed &&
       typeof parsed === 'object' &&
       (parsed.type === 'telemetry.road_segmentation' ||
-        parsed.type === 'telemetry.autonomous_control')
+        parsed.type === 'telemetry.autonomous_control' ||
+        parsed.type === 'telemetry.traffic_sign_detection')
     ) {
       return parsed;
     }
@@ -370,5 +421,22 @@ export const formatVisionDebugViewLabel = (view: VisionDebugViewId): string => {
       return 'Saida anotada';
     case 'dashboard':
       return 'Dashboard';
+  }
+};
+
+export const formatTrafficSignDetectorStateLabel = (
+  state: TrafficSignDetectorState
+): string => {
+  switch (state) {
+    case 'disabled':
+      return 'Desativado';
+    case 'idle':
+      return 'Sem deteccao';
+    case 'candidate':
+      return 'Candidato em validacao';
+    case 'confirmed':
+      return 'Sinal confirmado';
+    case 'error':
+      return 'Erro no detector';
   }
 };

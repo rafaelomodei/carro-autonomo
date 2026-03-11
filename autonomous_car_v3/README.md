@@ -9,8 +9,9 @@ Versao focada em controle do veiculo no Raspberry Pi com um pipeline compartilha
 - A visao foi separada em dois arquivos:
   - `config/vision.env`: origem de captura, janela de debug e taxa maxima de telemetria.
   - `config/road_segmentation.env`: parametros `LANE_*` do pipeline.
+  - `config/traffic_sign_detection.env`: ROI da direita, confianca minima e filtro temporal da sinalizacao.
 - O servidor WebSocket suporta multiplos clientes, com no maximo um controlador ativo e qualquer numero de consumidores de telemetria.
-- O mesmo WebSocket publica `telemetry.road_segmentation` e `telemetry.autonomous_control`.
+- O mesmo WebSocket publica `telemetry.road_segmentation`, `telemetry.traffic_sign_detection` e `telemetry.autonomous_control`.
 
 ## Perfis de execucao
 
@@ -74,6 +75,7 @@ Detalhes do controlador e do painel local em `docs/pid_control.md`.
 - `VISION_STREAM_MAX_FPS`
 - `VISION_STREAM_JPEG_QUALITY`
 - `VISION_SEGMENTATION_CONFIG_PATH`
+- `VISION_TRAFFIC_SIGN_CONFIG_PATH`
 
 Defaults:
 
@@ -85,11 +87,23 @@ VISION_TELEMETRY_MAX_FPS=10
 VISION_STREAM_MAX_FPS=5
 VISION_STREAM_JPEG_QUALITY=70
 VISION_SEGMENTATION_CONFIG_PATH=road_segmentation.env
+VISION_TRAFFIC_SIGN_CONFIG_PATH=traffic_sign_detection.env
 ```
 
 ### `config/road_segmentation.env`
 
 Contem os mesmos `LANE_*` ja validados no laboratorio, sem renomear o contrato.
+
+### `config/traffic_sign_detection.env`
+
+- `TRAFFIC_SIGN_ENABLED`
+- `TRAFFIC_SIGN_ROI_RIGHT_WIDTH_RATIO`
+- `TRAFFIC_SIGN_ROI_TOP_RATIO`
+- `TRAFFIC_SIGN_ROI_BOTTOM_RATIO`
+- `TRAFFIC_SIGN_MIN_CONFIDENCE`
+- `TRAFFIC_SIGN_MIN_CONSECUTIVE_FRAMES`
+- `TRAFFIC_SIGN_MAX_MISSED_FRAMES`
+- `TRAFFIC_SIGN_MAX_RAW_DETECTIONS`
 
 ## Fontes de captura
 
@@ -159,6 +173,42 @@ Semantica operacional:
 - `command:autonomous:stop`, troca de modo, encerramento do servico ou perda de pista acima do timeout executam parada segura.
 
 Telemetria publicada:
+
+```json
+{
+  "type": "telemetry.traffic_sign_detection",
+  "timestamp_ms": 1710000000000,
+  "source": "Camera index 0",
+  "detector_state": "confirmed",
+  "roi": {
+    "x": 208,
+    "y": 0,
+    "width": 112,
+    "height": 240,
+    "right_width_ratio": 0.35,
+    "top_ratio": 0.0,
+    "bottom_ratio": 1.0
+  },
+  "raw_detections": [
+    {
+      "sign_id": "turn_left",
+      "model_label": "Vire a esquerda sign",
+      "display_label": "Vire a esquerda",
+      "confidence_score": 0.82
+    }
+  ],
+  "candidate": null,
+  "active_detection": {
+    "sign_id": "turn_left",
+    "display_label": "Vire a esquerda",
+    "consecutive_frames": 3,
+    "required_frames": 3,
+    "confirmed_at_ms": 1710000000000,
+    "last_seen_at_ms": 1710000000000
+  },
+  "last_error": null
+}
+```
 
 ```json
 {

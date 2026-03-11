@@ -11,6 +11,7 @@ import { Toggle } from '@/components/ui/toggle';
 import {
   formatConnectionStateLabel,
   formatStopReasonLabel,
+  formatTrafficSignDetectorStateLabel,
   formatTrackingStateLabel,
   formatVisionDebugViewLabel,
   VisionDebugViewId,
@@ -19,6 +20,7 @@ import { emitUiLogEvent } from '@/lib/vehicle-events';
 import { useVehicleConfig } from '@/providers/VehicleConfigProvider';
 import { useVehicleVision } from '@/providers/VehicleVisionProvider';
 import VehicleLogs from '@/components/organism/VehicleLogs';
+import SignalDetectionPanel from '@/components/molecules/SignalDetectionPanel';
 
 const DEFAULT_SELECTED_VIEWS: VisionDebugViewId[] = ['dashboard'];
 
@@ -110,6 +112,7 @@ const VehicleVisionDebug = () => {
     connectionState,
     lastTelemetryAt,
     roadSegmentationTelemetry,
+    trafficSignDetectionTelemetry,
   } = useVehicleConfig();
   const {
     connectionState: visionConnectionState,
@@ -478,6 +481,54 @@ const VehicleVisionDebug = () => {
                   </>
                 ) : (
                   <p>Aguardando telemetria de segmentacao.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className='border-border/70 bg-card/70'>
+              <CardHeader className='pb-3'>
+                <CardTitle className='text-base'>Sinalizacao</CardTitle>
+              </CardHeader>
+              <CardContent className='space-y-3 text-sm text-muted-foreground'>
+                {trafficSignDetectionTelemetry ? (
+                  <>
+                    <p>
+                      Estado:{' '}
+                      {formatTrafficSignDetectorStateLabel(
+                        trafficSignDetectionTelemetry.detector_state
+                      )}
+                    </p>
+                    <p>
+                      ROI: {trafficSignDetectionTelemetry.roi.width}x
+                      {trafficSignDetectionTelemetry.roi.height} @ x=
+                      {trafficSignDetectionTelemetry.roi.x}
+                    </p>
+                    <p>
+                      Candidate:{' '}
+                      {trafficSignDetectionTelemetry.candidate
+                        ? `${trafficSignDetectionTelemetry.candidate.display_label} (${trafficSignDetectionTelemetry.candidate.consecutive_frames}/${trafficSignDetectionTelemetry.candidate.required_frames})`
+                        : 'none'}
+                    </p>
+                    <p>
+                      Active:{' '}
+                      {trafficSignDetectionTelemetry.active_detection?.display_label ??
+                        'none'}
+                    </p>
+                    {trafficSignDetectionTelemetry.raw_detections.length ? (
+                      <SignalDetectionPanel
+                        signs={trafficSignDetectionTelemetry.raw_detections}
+                      />
+                    ) : (
+                      <p>Nenhuma deteccao bruta no frame atual.</p>
+                    )}
+                    {trafficSignDetectionTelemetry.last_error ? (
+                      <p className='text-red-400'>
+                        {trafficSignDetectionTelemetry.last_error}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p>Aguardando telemetria de sinalizacao.</p>
                 )}
               </CardContent>
             </Card>

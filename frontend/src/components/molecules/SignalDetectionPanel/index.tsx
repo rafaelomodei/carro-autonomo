@@ -2,10 +2,14 @@
 
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-import { TrafficSignal } from '@/utils/constants/trafficSigns';
+import { TrafficSignId } from '@/lib/autonomous-car';
+import { getTrafficSignCatalogItem } from '@/utils/constants/trafficSigns';
 
-interface SignalItem extends TrafficSignal {
-  color?: 'green' | 'orange' | 'red' | 'gray';
+interface SignalItem {
+  sign_id: TrafficSignId;
+  display_label: string;
+  confidence_score: number;
+  caption?: string;
 }
 
 interface SignalDetectionPanelProps {
@@ -25,18 +29,31 @@ const SignalDetectionPanel: React.FC<SignalDetectionPanelProps> = ({
 }) => {
   return (
     <div className='flex flex-col gap-2'>
-      {signs.map((item, index) => (
-        <div key={index} className='flex items-center gap-2'>
-          <Badge className={`rounded-md ${getBadgeColor(item.confidence!)}`}>
-            {item.confidence}%
-          </Badge>
-          <p>|</p>
-          <p>{item.label}</p>
-          {item.iconUrl && (
-            <Image src={item.iconUrl} alt={item.label} width={28} height={28} />
-          )}
-        </div>
-      ))}
+      {signs.map((item, index) => {
+        const catalogItem = getTrafficSignCatalogItem(item.sign_id);
+        const confidence = Math.round(item.confidence_score * 100);
+
+        return (
+          <div key={`${item.sign_id}-${index}`} className='flex items-center gap-2'>
+            <Badge className={`rounded-md ${getBadgeColor(confidence)}`}>
+              {confidence}%
+            </Badge>
+            <p>|</p>
+            <p>{item.display_label}</p>
+            {catalogItem.iconUrl && (
+              <Image
+                src={catalogItem.iconUrl}
+                alt={catalogItem.label}
+                width={28}
+                height={28}
+              />
+            )}
+            {item.caption ? (
+              <p className='text-xs text-muted-foreground'>{item.caption}</p>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 };

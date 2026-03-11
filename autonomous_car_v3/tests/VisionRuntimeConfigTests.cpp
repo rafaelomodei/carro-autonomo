@@ -36,6 +36,7 @@ void testVisionRuntimeConfigLoadAndResolvePaths() {
         file << "VISION_STREAM_MAX_FPS=6\n";
         file << "VISION_STREAM_JPEG_QUALITY=82\n";
         file << "VISION_SEGMENTATION_CONFIG_PATH=config/road_segmentation.env\n";
+        file << "VISION_TRAFFIC_SIGN_CONFIG_PATH=config/traffic_sign_detection.env\n";
     }
 
     VisionRuntimeConfig config;
@@ -56,6 +57,9 @@ void testVisionRuntimeConfigLoadAndResolvePaths() {
     expect(config.segmentation_config_path ==
                (config_dir / "config/road_segmentation.env").string(),
            "VISION_SEGMENTATION_CONFIG_PATH relativo deve ser resolvido.");
+    expect(config.traffic_sign_config_path ==
+               (config_dir / "config/traffic_sign_detection.env").string(),
+           "VISION_TRAFFIC_SIGN_CONFIG_PATH relativo deve ser resolvido.");
     expect(warnings.empty(), "Nao deve haver warnings para arquivo valido.");
 }
 

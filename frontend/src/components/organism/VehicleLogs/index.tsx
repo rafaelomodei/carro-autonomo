@@ -8,6 +8,7 @@ import {
   formatConnectionStateLabel,
   formatDrivingModeLabel,
   formatStopReasonLabel,
+  formatTrafficSignDetectorStateLabel,
   formatTrackingStateLabel,
   TelemetryReference,
 } from '@/lib/autonomous-car';
@@ -48,6 +49,7 @@ const VehicleLogs = () => {
     pendingAutonomousCommand,
     pendingDrivingMode,
     roadSegmentationTelemetry,
+    trafficSignDetectionTelemetry,
   } = useVehicleConfig();
 
   const currentDrivingMode =
@@ -180,6 +182,30 @@ const VehicleLogs = () => {
                   {formatNumber(
                     roadSegmentationTelemetry.steering_error_normalized
                   )}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {trafficSignDetectionTelemetry && (
+            <div className='rounded-lg border p-3'>
+              <p className='text-xs text-muted-foreground'>Sinalizacao</p>
+              <div className='mt-2 grid gap-2 text-xs text-muted-foreground md:grid-cols-2'>
+                <p>
+                  Estado:{' '}
+                  {formatTrafficSignDetectorStateLabel(
+                    trafficSignDetectionTelemetry.detector_state
+                  )}
+                </p>
+                <p>Deteccoes brutas: {trafficSignDetectionTelemetry.raw_detections.length}</p>
+                <p>
+                  Candidate:{' '}
+                  {trafficSignDetectionTelemetry.candidate?.display_label ?? 'none'}
+                </p>
+                <p>
+                  Active:{' '}
+                  {trafficSignDetectionTelemetry.active_detection?.display_label ??
+                    'none'}
                 </p>
               </div>
             </div>

@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "services/vision/VisionDebugStream.hpp"
+#include "services/traffic_sign_detection/TrafficSignTypes.hpp"
 
 namespace autonomous_car::services::autonomous_control {
 class AutonomousControlService;
