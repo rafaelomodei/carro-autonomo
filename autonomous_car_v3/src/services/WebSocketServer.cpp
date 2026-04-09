@@ -496,7 +496,7 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
             break;
         }
 
-        const auto parsed_message = parseInboundMessage(*payload_opt);
+        const auto parsed_message = websocket::parseInboundMessage(*payload_opt);
         if (!parsed_message) {
             std::cerr << "Mensagem recebida em formato invalido: " << *payload_opt << std::endl;
             continue;
