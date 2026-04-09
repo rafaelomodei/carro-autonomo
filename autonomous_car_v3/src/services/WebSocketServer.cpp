@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -25,6 +26,7 @@
 
 namespace {
 constexpr char kWebSocketGuid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+constexpr int kClientSendTimeoutMs = 40;
 
 class Sha1 {
 public:
@@ -182,6 +184,9 @@ bool recvAll(int socket_fd, void *buffer, size_t length) {
     size_t received = 0;
     while (received < length) {
         ssize_t chunk = recv(socket_fd, bytes + received, length - received, 0);
+        if (chunk < 0 && errno == EINTR) {
+            continue;
+        }
         if (chunk <= 0) {
             return false;
         }
@@ -195,6 +200,9 @@ bool sendAll(int socket_fd, const void *buffer, size_t length) {
     size_t sent_total = 0;
     while (sent_total < length) {
         const ssize_t sent = send(socket_fd, bytes + sent_total, length - sent_total, 0);
+        if (sent < 0 && errno == EINTR) {
+            continue;
+        }
         if (sent <= 0) {
             return false;
         }
@@ -339,6 +347,23 @@ bool sendCloseFrame(int client_fd) {
     return sendAll(client_fd, frame, sizeof(frame));
 }
 
+void configureClientSocket(int client_fd) {
+    const int enable = 1;
+    if (setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(enable)) < 0) {
+        std::cerr << "Aviso: falha ao ativar TCP_NODELAY no cliente WebSocket: "
+                  << std::strerror(errno) << std::endl;
+    }
+
+    timeval send_timeout{};
+    send_timeout.tv_sec = 0;
+    send_timeout.tv_usec = kClientSendTimeoutMs * 1000;
+    if (setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout,
+                   sizeof(send_timeout)) < 0) {
+        std::cerr << "Aviso: falha ao configurar timeout de envio do cliente WebSocket: "
+                  << std::strerror(errno) << std::endl;
+    }
+}
+
 } // namespace
 
 namespace autonomous_car::services {
@@ -408,8 +433,12 @@ void WebSocketServer::broadcastText(const std::string &payload) {
         }
 
         if (!sendTextFrame(session->fd, payload)) {
+            const int send_error = errno;
             session->alive.store(false);
             shutdown(session->fd, SHUT_RDWR);
+            std::cerr << "Cliente WebSocket " << session->id
+                      << " desconectado apos falha no envio de texto: "
+                      << std::strerror(send_error) << std::endl;
         }
     }
 }
@@ -428,8 +457,13 @@ void WebSocketServer::broadcastVisionFrame(vision::VisionDebugViewId view,
         }
 
         if (!sendTextFrame(session->fd, payload)) {
+            const int send_error = errno;
             session->alive.store(false);
             shutdown(session->fd, SHUT_RDWR);
+            std::cerr << "Cliente WebSocket " << session->id
+                      << " desconectado apos falha no envio da view "
+                      << vision::toString(view) << ": " << std::strerror(send_error)
+                      << std::endl;
         }
     }
 }
@@ -679,6 +713,8 @@ void WebSocketServer::run() {
             }
             continue;
         }
+
+        configureClientSocket(client_fd);
 
         const auto request_opt = readHttpRequest(client_fd);
         if (!request_opt) {
