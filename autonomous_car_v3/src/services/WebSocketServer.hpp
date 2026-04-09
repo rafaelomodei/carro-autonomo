@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "common/DrivingMode.hpp"
+#include "services/traffic_signals/TrafficSignalRegistry.hpp"
 #include "services/vision/VisionDebugStream.hpp"
 #include "services/vision/VisionSubscriptionRegistry.hpp"
 #include "services/websocket/ClientRegistry.hpp"
@@ -25,10 +26,12 @@ class WebSocketServer {
 public:
     using ConfigUpdateHandler = std::function<bool(const std::string &, const std::string &)>;
     using DrivingModeProvider = std::function<autonomous_car::DrivingMode()>;
+    using SignalDetectedHandler = std::function<bool(const std::string &)>;
     using ClientRole = websocket::ClientRole;
 
     WebSocketServer(const std::string &host, int port, controllers::CommandRouter &command_router,
-                    ConfigUpdateHandler config_handler, DrivingModeProvider mode_provider);
+                    ConfigUpdateHandler config_handler, DrivingModeProvider mode_provider,
+                    SignalDetectedHandler signal_detected_handler = {});
     ~WebSocketServer();
 
     void start();
@@ -60,6 +63,7 @@ private:
     controllers::CommandRouter &command_router_;
     ConfigUpdateHandler config_handler_;
     DrivingModeProvider driving_mode_provider_;
+    SignalDetectedHandler signal_detected_handler_;
     std::thread server_thread_;
     std::atomic<bool> running_;
     std::atomic<int> server_fd_;

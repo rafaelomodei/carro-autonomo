@@ -20,6 +20,7 @@ O desenvolvimento ainda está em andamento e novas funcionalidades podem ser adi
 - **`autonomous_car/`** &ndash; Aplicação em C++ que roda no Raspberry Pi. Faz captura de vídeo, expõe um servidor WebSocket e integra modelos do Edge Impulse.
 - **`autonomous_car_v2/`** &ndash; Versão simplificada com foco na transmissão via WebSocket e controle dos motores com `pigpio`.
 - **`autonomous_car_v3/`** &ndash; Nova versão em C++17 com servidor WebSocket próprio e controle de motores via WiringPi.
+- **`traffic_sign_service/`** &ndash; Servico C++ separado que roda no Ubuntu, consome `vision.frame` do Raspberry e devolve apenas `signal:detected=<signal_id>`.
 - **`shared/`** &ndash; Módulos C++ reutilizáveis entre o laboratório e as aplicações principais, incluindo o core de segmentação de estrada.
 - **`frontend/`** &ndash; Projeto em Next.js/React responsável pela interface web.
 - **`edgeImpulse/`** &ndash; Arquivos de modelos e dados exportados do Edge Impulse.
