@@ -20,6 +20,7 @@ struct VisionRuntimeConfig {
     double stream_max_fps{5.0};
     int stream_jpeg_quality{70};
     std::string segmentation_config_path;
+    std::string traffic_sign_config_path;
 };
 
 std::string toString(VisionSourceMode mode);

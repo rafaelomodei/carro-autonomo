@@ -19,6 +19,12 @@
 #include "services/autonomous_control/AutonomousControlTelemetry.hpp"
 #include "services/road_segmentation/RoadSegmentationTelemetry.hpp"
 #include "services/road_segmentation/VisionRuntimeConfig.hpp"
+#include "services/traffic_sign_detection/EdgeImpulseTrafficSignDetector.hpp"
+#include "services/traffic_sign_detection/TrafficSignConfig.hpp"
+#include "services/traffic_sign_detection/TrafficSignDetector.hpp"
+#include "services/traffic_sign_detection/TrafficSignTelemetry.hpp"
+#include "services/traffic_sign_detection/TrafficSignTemporalFilter.hpp"
+#include "services/traffic_sign_detection/TrafficSignTypes.hpp"
 #include "services/vision/VisionDebugStream.hpp"
 #include "services/vision/VisionDebugViewRenderer.hpp"
 
@@ -28,11 +34,13 @@ namespace {
 namespace rsl = road_segmentation_lab;
 namespace rs = autonomous_car::services::road_segmentation;
 namespace autoctrl = autonomous_car::services::autonomous_control;
+namespace ts = autonomous_car::services::traffic_sign_detection;
 namespace vision = autonomous_car::services::vision;
 
 struct RuntimeState {
     rs::VisionRuntimeConfig vision_config;
     rsl::config::LabConfig segmentation_config;
+    ts::TrafficSignConfig traffic_sign_config;
     std::unique_ptr<rsl::pipeline::stages::FrameSource> source;
     std::string source_label;
 };
@@ -75,7 +83,8 @@ void publishVisionFrames(
     const rsl::pipeline::RoadSegmentationResult &result,
     const rsl::config::LabConfig &config, const std::string &source_label,
     const std::string &calibration_status,
-    const autoctrl::AutonomousControlSnapshot &snapshot, std::int64_t timestamp_ms,
+    const autoctrl::AutonomousControlSnapshot &snapshot,
+    const ts::TrafficSignFrameResult &traffic_sign_result, std::int64_t timestamp_ms,
     const RoadSegmentationService::VisionFramePublisher &publisher) {
     if (!publisher || requested_views.empty()) {
         return;
@@ -87,7 +96,8 @@ void publishVisionFrames(
         }
 
         cv::Mat frame =
-            renderer.render(view, result, config, source_label, calibration_status, snapshot);
+            renderer.render(view, result, config, source_label, calibration_status, snapshot,
+                            traffic_sign_result);
         const auto payload = vision::buildVisionFrameJson(
             view, frame, timestamp_ms, vision_config.stream_jpeg_quality);
         if (payload) {
@@ -150,6 +160,11 @@ bool loadRuntimeState(const std::string &vision_config_path, RuntimeState &state
                                     state.segmentation_config, &segmentation_warnings);
     printWarnings("RoadSegmentationService/segmentation", segmentation_warnings);
 
+    std::vector<std::string> traffic_sign_warnings;
+    ts::loadTrafficSignConfigFromFile(state.vision_config.traffic_sign_config_path,
+                                      state.traffic_sign_config, &traffic_sign_warnings);
+    printWarnings("RoadSegmentationService/traffic_sign", traffic_sign_warnings);
+
     std::vector<std::string> source_warnings;
     state.source = createFrameSource(state.vision_config, &source_warnings, &state.source_label);
     printWarnings("RoadSegmentationService/source", source_warnings);
@@ -166,6 +181,20 @@ bool loadRuntimeState(const std::string &vision_config_path, RuntimeState &state
     return true;
 }
 
+std::unique_ptr<ts::TrafficSignDetector> createTrafficSignDetector(
+    const ts::TrafficSignConfig &config,
+    const RoadSegmentationService::TrafficSignDetectorFactory &factory) {
+    if (!config.enabled) {
+        return {};
+    }
+
+    if (factory) {
+        return factory(config);
+    }
+
+    return std::make_unique<ts::EdgeImpulseTrafficSignDetector>(config);
+}
+
 } // namespace
 
 RoadSegmentationService::RoadSegmentationService(std::string vision_config_path,
@@ -174,14 +203,16 @@ RoadSegmentationService::RoadSegmentationService(std::string vision_config_path,
                                                  VisionFramePublisher vision_frame_publisher,
                                                  VisionSubscriptionProvider vision_subscription_provider,
                                                  ControlSink control_sink,
-                                                 std::string window_name)
+                                                 std::string window_name,
+                                                 TrafficSignDetectorFactory traffic_sign_detector_factory)
     : vision_config_path_(std::move(vision_config_path)),
       control_service_(control_service),
       telemetry_publisher_(std::move(telemetry_publisher)),
       vision_frame_publisher_(std::move(vision_frame_publisher)),
       vision_subscription_provider_(std::move(vision_subscription_provider)),
       control_sink_(std::move(control_sink)),
-      window_name_(std::move(window_name)) {}
+      window_name_(std::move(window_name)),
+      traffic_sign_detector_factory_(std::move(traffic_sign_detector_factory)) {}
 
 RoadSegmentationService::~RoadSegmentationService() { stop(); }
 
@@ -215,6 +246,9 @@ void RoadSegmentationService::run() {
 
         rsl::pipeline::RoadSegmentationPipeline pipeline(state.segmentation_config);
         vision::VisionDebugViewRenderer vision_renderer;
+        auto traffic_sign_detector =
+            createTrafficSignDetector(state.traffic_sign_config, traffic_sign_detector_factory_);
+        ts::TrafficSignTemporalFilter traffic_sign_filter(state.traffic_sign_config);
 
         bool paused = state.source->isStaticImage();
         bool step_once = true;
@@ -224,6 +258,7 @@ void RoadSegmentationService::run() {
         cv::Mat current_dashboard;
         rsl::pipeline::RoadSegmentationResult current_result;
         autoctrl::AutonomousControlSnapshot current_control_snapshot;
+        ts::TrafficSignFrameResult current_traffic_sign_result;
         vision::VisionDebugViewSet last_requested_views;
         auto last_telemetry_publish = std::chrono::steady_clock::time_point::min();
         auto last_stream_publish = std::chrono::steady_clock::time_point::min();
@@ -267,11 +302,31 @@ void RoadSegmentationService::run() {
                     current_control_snapshot.timestamp_ms = timestamp_ms;
                 }
 
+                const ts::TrafficSignRoi traffic_sign_roi = ts::buildTrafficSignRoi(
+                    current_frame.size(), state.traffic_sign_config.roi_right_width_ratio,
+                    state.traffic_sign_config.roi_top_ratio,
+                    state.traffic_sign_config.roi_bottom_ratio);
+                if (!state.traffic_sign_config.enabled) {
+                    current_traffic_sign_result = ts::makeTrafficSignFrameResult(
+                        ts::TrafficSignDetectorState::Disabled, traffic_sign_roi, timestamp_ms);
+                } else if (!traffic_sign_detector) {
+                    current_traffic_sign_result = ts::makeTrafficSignFrameResult(
+                        ts::TrafficSignDetectorState::Error, traffic_sign_roi, timestamp_ms,
+                        "Falha ao criar o detector de sinalizacao.");
+                    traffic_sign_filter.reset();
+                } else {
+                    current_traffic_sign_result =
+                        traffic_sign_detector->detect(current_frame, timestamp_ms);
+                    current_traffic_sign_result =
+                        traffic_sign_filter.update(std::move(current_traffic_sign_result));
+                }
+
                 if (state.vision_config.debug_window_enabled) {
                     current_dashboard = vision_renderer.render(
                         vision::VisionDebugViewId::Dashboard, current_result,
                         state.segmentation_config, state.source_label,
-                        pipeline.calibrationStatus(), current_control_snapshot);
+                        pipeline.calibrationStatus(), current_control_snapshot,
+                        current_traffic_sign_result);
                 } else {
                     current_dashboard.release();
                 }
@@ -282,6 +337,8 @@ void RoadSegmentationService::run() {
                                          last_telemetry_publish)) {
                         telemetry_publisher_(rs::buildRoadSegmentationTelemetryJson(
                             current_result, state.source_label, timestamp_ms));
+                        telemetry_publisher_(ts::buildTrafficSignTelemetryJson(
+                            current_traffic_sign_result, state.source_label));
                         if (control_service_) {
                             telemetry_publisher_(autoctrl::buildAutonomousControlTelemetryJson(
                                 current_control_snapshot));
@@ -315,7 +372,8 @@ void RoadSegmentationService::run() {
                     publishVisionFrames(requested_views, state.vision_config, vision_renderer,
                                         current_result, state.segmentation_config,
                                         state.source_label, pipeline.calibrationStatus(),
-                                        current_control_snapshot, stream_timestamp_ms,
+                                        current_control_snapshot, current_traffic_sign_result,
+                                        stream_timestamp_ms,
                                         vision_frame_publisher_);
                 }
             }
@@ -357,6 +415,10 @@ void RoadSegmentationService::run() {
                     if (loadRuntimeState(vision_config_path_, reloaded_state)) {
                         state = std::move(reloaded_state);
                         pipeline.updateConfig(state.segmentation_config);
+                        traffic_sign_detector = createTrafficSignDetector(
+                            state.traffic_sign_config, traffic_sign_detector_factory_);
+                        traffic_sign_filter = ts::TrafficSignTemporalFilter(state.traffic_sign_config);
+                        current_traffic_sign_result = ts::TrafficSignFrameResult{};
                         paused = state.source->isStaticImage();
                         step_once = true;
                         need_reprocess = true;

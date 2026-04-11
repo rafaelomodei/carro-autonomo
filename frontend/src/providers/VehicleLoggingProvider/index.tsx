@@ -706,6 +706,10 @@ export const VehicleLoggingProvider = ({
         return;
       }
 
+      if (detail.message.type === 'telemetry.traffic_sign_detection') {
+        return;
+      }
+
       telemetryCountsRef.current.autonomous_control += 1;
       mergeAppendPayload({
         autonomous_control_rows: [

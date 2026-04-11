@@ -131,6 +131,10 @@ bool loadVisionRuntimeConfigFromFile(const std::string &path, VisionRuntimeConfi
         config.segmentation_config_path =
             std::filesystem::absolute(config_path.parent_path() / "road_segmentation.env").string();
     }
+    if (config.traffic_sign_config_path.empty()) {
+        config.traffic_sign_config_path =
+            std::filesystem::absolute(config_path.parent_path() / "traffic_sign.env").string();
+    }
 
     std::ifstream file(path);
     if (!file.is_open()) {
@@ -218,6 +222,11 @@ bool loadVisionRuntimeConfigFromFile(const std::string &path, VisionRuntimeConfi
 
         if (key == "VISION_SEGMENTATION_CONFIG_PATH") {
             config.segmentation_config_path = resolveMaybeRelativePath(config_path, value);
+            continue;
+        }
+
+        if (key == "VISION_TRAFFIC_SIGN_CONFIG_PATH") {
+            config.traffic_sign_config_path = resolveMaybeRelativePath(config_path, value);
             continue;
         }
 

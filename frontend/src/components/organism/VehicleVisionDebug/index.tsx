@@ -11,6 +11,7 @@ import { Toggle } from '@/components/ui/toggle';
 import {
   formatConnectionStateLabel,
   formatStopReasonLabel,
+  formatTrafficSignDetectorStateLabel,
   formatTrackingStateLabel,
   formatVisionDebugViewLabel,
   VisionDebugViewId,
@@ -110,6 +111,7 @@ const VehicleVisionDebug = () => {
     connectionState,
     lastTelemetryAt,
     roadSegmentationTelemetry,
+    trafficSignTelemetry,
   } = useVehicleConfig();
   const {
     connectionState: visionConnectionState,
@@ -442,6 +444,55 @@ const VehicleVisionDebug = () => {
                   </>
                 ) : (
                   <p>Aguardando diagnostico do PID.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className='border-border/70 bg-card/70'>
+              <CardHeader className='pb-3'>
+                <CardTitle className='text-base'>Sinalizacao</CardTitle>
+              </CardHeader>
+              <CardContent className='space-y-1 text-sm text-muted-foreground'>
+                {trafficSignTelemetry ? (
+                  <>
+                    <p>
+                      Estado:{' '}
+                      {formatTrafficSignDetectorStateLabel(
+                        trafficSignTelemetry.detector_state
+                      )}
+                    </p>
+                    <p>
+                      Active:{' '}
+                      {trafficSignTelemetry.active_detection?.display_label ??
+                        'nenhum'}
+                    </p>
+                    <p>
+                      Candidate:{' '}
+                      {trafficSignTelemetry.candidate?.display_label ?? 'nenhum'}
+                    </p>
+                    <p>
+                      Brutas: {trafficSignTelemetry.raw_detections.length}
+                    </p>
+                    <p>
+                      Conf.:{' '}
+                      {trafficSignTelemetry.active_detection
+                        ? formatNumber(
+                            trafficSignTelemetry.active_detection.confidence_score
+                          )
+                        : trafficSignTelemetry.candidate
+                          ? formatNumber(
+                              trafficSignTelemetry.candidate.confidence_score
+                            )
+                          : '0.00'}
+                    </p>
+                    {trafficSignTelemetry.last_error ? (
+                      <p className='text-red-400'>
+                        Erro: {trafficSignTelemetry.last_error}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p>Aguardando telemetria de sinalizacao.</p>
                 )}
               </CardContent>
             </Card>

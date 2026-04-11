@@ -10,6 +10,8 @@
 namespace autonomous_car::services::autonomous_control {
 namespace {
 
+namespace ts = autonomous_car::services::traffic_sign_detection;
+
 const cv::Scalar kPanelBackground{18, 18, 18};
 const cv::Scalar kPanelSection{28, 28, 28};
 const cv::Scalar kPanelBorder{78, 78, 78};
@@ -21,6 +23,23 @@ const cv::Scalar kNeutralColor{0, 215, 255};
 const cv::Scalar kWarningColor{0, 140, 255};
 const cv::Scalar kDangerColor{0, 0, 255};
 constexpr int kPanelWidth = 360;
+
+cv::Scalar trafficStateColor(ts::TrafficSignDetectorState state) {
+    switch (state) {
+    case ts::TrafficSignDetectorState::Disabled:
+        return {170, 170, 170};
+    case ts::TrafficSignDetectorState::Idle:
+        return kNeutralColor;
+    case ts::TrafficSignDetectorState::Candidate:
+        return kWarningColor;
+    case ts::TrafficSignDetectorState::Confirmed:
+        return kPositiveColor;
+    case ts::TrafficSignDetectorState::Error:
+        return kDangerColor;
+    }
+
+    return kDangerColor;
+}
 
 cv::Scalar stateColor(const AutonomousControlSnapshot &snapshot) {
     switch (snapshot.tracking_state) {
@@ -43,76 +62,120 @@ cv::Scalar stateColor(const AutonomousControlSnapshot &snapshot) {
 cv::Mat AutonomousControlDebugRenderer::render(
     const road_segmentation_lab::pipeline::RoadSegmentationResult &result,
     const road_segmentation_lab::config::LabConfig &config, const std::string &source_label,
-    const std::string &calibration_status, const AutonomousControlSnapshot &snapshot) const {
+    const std::string &calibration_status, const AutonomousControlSnapshot &snapshot,
+    const ts::TrafficSignFrameResult &traffic_sign_result) const {
     cv::Mat segmentation_panel =
         segmentation_renderer_.render(result, config, source_label, calibration_status);
     if (segmentation_panel.empty()) {
         return segmentation_panel;
     }
 
-    cv::Mat control_panel = buildControlPanel(snapshot, {kPanelWidth, segmentation_panel.rows});
+    cv::Mat control_panel = buildControlPanel(snapshot, traffic_sign_result,
+                                              {kPanelWidth, segmentation_panel.rows});
     cv::Mat full_panel;
     cv::hconcat(segmentation_panel, control_panel, full_panel);
     return full_panel;
 }
 
-cv::Mat AutonomousControlDebugRenderer::buildControlPanel(const AutonomousControlSnapshot &snapshot,
-                                                          cv::Size size) {
+cv::Mat AutonomousControlDebugRenderer::buildControlPanel(
+    const AutonomousControlSnapshot &snapshot, const ts::TrafficSignFrameResult &traffic_sign_result,
+    cv::Size size) {
     cv::Mat panel(size, CV_8UC3, kPanelBackground);
-    drawControlStatus(panel, snapshot);
-    drawSteeringGauge(panel, snapshot, {22, 132, panel.cols - 44, 130});
-    drawTopDownPreview(panel, snapshot, {22, 290, panel.cols - 44, panel.rows - 312});
+    const int padding = 18;
+    const int inner_width = panel.cols - padding * 2;
+    const cv::Rect control_area(padding, padding, inner_width, 108);
+    const cv::Rect traffic_area(padding, control_area.y + control_area.height + 12, inner_width,
+                                112);
+    const cv::Rect gauge_area(padding, traffic_area.y + traffic_area.height + 12, inner_width,
+                              96);
+    const int top_down_y = gauge_area.y + gauge_area.height + 12;
+    const int top_down_height = std::max(96, panel.rows - top_down_y - padding);
+
+    drawControlStatus(panel, snapshot, control_area);
+    drawTrafficSignStatus(panel, traffic_sign_result, traffic_area);
+    drawSteeringGauge(panel, snapshot, gauge_area);
+    drawTopDownPreview(panel, snapshot,
+                       {padding, top_down_y, inner_width, top_down_height});
     cv::rectangle(panel, {0, 0}, {panel.cols - 1, panel.rows - 1}, kPanelBorder, 1, cv::LINE_AA);
     return panel;
 }
 
 void AutonomousControlDebugRenderer::drawControlStatus(cv::Mat &panel,
-                                                       const AutonomousControlSnapshot &snapshot) {
-    cv::rectangle(panel, {18, 18}, {panel.cols - 18, 110}, kPanelSection, cv::FILLED);
-    cv::rectangle(panel, {18, 18}, {panel.cols - 18, 110}, kPanelBorder, 1, cv::LINE_AA);
+                                                       const AutonomousControlSnapshot &snapshot,
+                                                       const cv::Rect &area) {
+    cv::rectangle(panel, area, kPanelSection, cv::FILLED);
+    cv::rectangle(panel, area, kPanelBorder, 1, cv::LINE_AA);
 
-    cv::putText(panel, "Controle autonomo", {32, 48}, cv::FONT_HERSHEY_SIMPLEX, 0.72,
+    cv::putText(panel, "Controle autonomo", {area.x + 14, area.y + 26},
+                cv::FONT_HERSHEY_SIMPLEX, 0.64,
                 kTextPrimary, 2, cv::LINE_AA);
-    cv::putText(panel, "Modo: " + std::string(toString(snapshot.driving_mode)), {32, 72},
-                cv::FONT_HERSHEY_SIMPLEX, 0.5, kTextSecondary, 1, cv::LINE_AA);
-    cv::putText(panel, "Estado: " + std::string(toString(snapshot.tracking_state)), {32, 94},
-                cv::FONT_HERSHEY_SIMPLEX, 0.52, stateColor(snapshot), 1, cv::LINE_AA);
+    cv::putText(panel, "Modo: " + std::string(toString(snapshot.driving_mode)),
+                {area.x + 14, area.y + 46}, cv::FONT_HERSHEY_SIMPLEX, 0.46, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel, "Estado: " + std::string(toString(snapshot.tracking_state)),
+                {area.x + 14, area.y + 66}, cv::FONT_HERSHEY_SIMPLEX, 0.48,
+                stateColor(snapshot), 1, cv::LINE_AA);
     cv::putText(panel,
                 "Start: " + std::string(snapshot.autonomous_started ? "on" : "off") +
                     " | Motion: " + std::string(toString(snapshot.motion_command)),
-                {32, 116}, cv::FONT_HERSHEY_SIMPLEX, 0.45, kTextSecondary, 1, cv::LINE_AA);
-
-    const int x = 32;
-    int y = 156;
-    const auto draw_line = [&](const std::string &text, const cv::Scalar &color = kTextSecondary) {
-        cv::putText(panel, text, {x, y}, cv::FONT_HERSHEY_SIMPLEX, 0.46, color, 1, cv::LINE_AA);
-        y += 20;
-    };
+                {area.x + 14, area.y + 86}, cv::FONT_HERSHEY_SIMPLEX, 0.40, kTextSecondary, 1,
+                cv::LINE_AA);
 
     if (snapshot.driving_mode == DrivingMode::Manual) {
-        draw_line("PID inativo no modo manual", kNeutralColor);
-        draw_line("Use o modo autonomous + start");
+        cv::putText(panel, "PID inativo no modo manual", {area.x + 14, area.y + 104},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.38, kNeutralColor, 1, cv::LINE_AA);
         return;
     }
 
-    draw_line("Stop: " + std::string(toString(snapshot.stop_reason)));
-    draw_line("Conf.: " + formatDouble(snapshot.confidence_score, 2) +
-              (snapshot.confidence_ok ? " ok" : " low"),
-              snapshot.confidence_ok ? kPositiveColor : kWarningColor);
-    draw_line("Erro preview: " + formatDouble(snapshot.preview_error));
-    draw_line("Steering cmd: " + formatDouble(snapshot.steering_command),
-              stateColor(snapshot));
-    draw_line("P/I/D: " + formatDouble(snapshot.pid.proportional) + " / " +
-                  formatDouble(snapshot.pid.integral) + " / " +
-                  formatDouble(snapshot.pid.derivative),
-              kTextPrimary);
-    draw_line("Heading: " +
-              std::string(snapshot.heading_valid ? formatDouble(snapshot.heading_error_rad)
-                                                 : "missing"));
-    draw_line("Curv.: " +
-              std::string(snapshot.curvature_valid
-                              ? formatDouble(snapshot.curvature_indicator_rad)
-                              : "missing"));
+    cv::putText(panel,
+                "Conf.: " + formatDouble(snapshot.confidence_score, 2) +
+                    " | Steering: " + formatDouble(snapshot.steering_command, 2),
+                {area.x + 14, area.y + 104}, cv::FONT_HERSHEY_SIMPLEX, 0.38,
+                snapshot.confidence_ok ? kPositiveColor : kWarningColor, 1, cv::LINE_AA);
+}
+
+void AutonomousControlDebugRenderer::drawTrafficSignStatus(
+    cv::Mat &panel, const ts::TrafficSignFrameResult &traffic_sign_result,
+    const cv::Rect &area) {
+    cv::rectangle(panel, area, kPanelSection, cv::FILLED);
+    cv::rectangle(panel, area, kPanelBorder, 1, cv::LINE_AA);
+    cv::putText(panel, "Sinalizacao", {area.x + 14, area.y + 26}, cv::FONT_HERSHEY_SIMPLEX,
+                0.6, kTextPrimary, 1, cv::LINE_AA);
+    cv::putText(panel,
+                "Estado: " +
+                    std::string(ts::toString(traffic_sign_result.detector_state)),
+                {area.x + 14, area.y + 46}, cv::FONT_HERSHEY_SIMPLEX, 0.45,
+                trafficStateColor(traffic_sign_result.detector_state), 1, cv::LINE_AA);
+    cv::putText(panel,
+                "ROI: " + formatDouble(traffic_sign_result.roi.right_width_ratio, 2) +
+                    " | " + formatDouble(traffic_sign_result.roi.top_ratio, 2) + " -> " +
+                    formatDouble(traffic_sign_result.roi.bottom_ratio, 2),
+                {area.x + 14, area.y + 66}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "Brutas: " + std::to_string(traffic_sign_result.raw_detections.size()),
+                {area.x + 14, area.y + 84}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                cv::LINE_AA);
+    std::string summary = "Active: none";
+    cv::Scalar summary_color = kTextSecondary;
+
+    if (traffic_sign_result.active_detection.has_value()) {
+        summary = "Active: " + traffic_sign_result.active_detection->display_label + " " +
+                  formatDouble(traffic_sign_result.active_detection->confidence_score, 2);
+        summary_color = kPositiveColor;
+    } else if (traffic_sign_result.candidate.has_value()) {
+        summary = "Candidate: " + traffic_sign_result.candidate->display_label + " " +
+                  formatDouble(traffic_sign_result.candidate->confidence_score, 2);
+        summary_color = kWarningColor;
+    }
+
+    if (!traffic_sign_result.last_error.empty()) {
+        summary = "Erro: " + traffic_sign_result.last_error;
+        summary_color = kDangerColor;
+    }
+
+    cv::putText(panel, summary, {area.x + 14, area.y + 102}, cv::FONT_HERSHEY_SIMPLEX, 0.38,
+                summary_color, 1, cv::LINE_AA);
 }
 
 void AutonomousControlDebugRenderer::drawSteeringGauge(cv::Mat &panel,
