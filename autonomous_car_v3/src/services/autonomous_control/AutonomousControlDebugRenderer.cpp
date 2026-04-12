@@ -152,32 +152,36 @@ void AutonomousControlDebugRenderer::drawTrafficSignStatus(
                 {area.x + 14, area.y + 46}, cv::FONT_HERSHEY_SIMPLEX, 0.45,
                 trafficStateColor(traffic_sign_result.detector_state), 1, cv::LINE_AA);
     cv::putText(panel,
-                "ROI: " + formatDouble(traffic_sign_result.roi.right_width_ratio, 2) +
-                    " | " + formatDouble(traffic_sign_result.roi.top_ratio, 2) + " -> " +
-                    formatDouble(traffic_sign_result.roi.bottom_ratio, 2),
+                "ROI X: " + formatDouble(traffic_sign_result.roi.left_ratio, 2) + " -> " +
+                    formatDouble(traffic_sign_result.roi.right_ratio, 2),
                 {area.x + 14, area.y + 66}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
                 cv::LINE_AA);
     cv::putText(panel,
-                "Brutas: " + std::to_string(traffic_sign_result.raw_detections.size()),
+                "ROI Y: " + formatDouble(traffic_sign_result.roi.top_ratio, 2) + " -> " +
+                    formatDouble(traffic_sign_result.roi.bottom_ratio, 2),
                 {area.x + 14, area.y + 84}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "Brutas: " + std::to_string(traffic_sign_result.raw_detections.size()),
+                {area.x + 14, area.y + 102}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
                 cv::LINE_AA);
     cv::putText(panel,
                 "FPS core/stream/sign: " + formatDouble(runtime_telemetry.core_fps, 1) + " / " +
                     formatDouble(runtime_telemetry.stream_fps, 1) + " / " +
                     formatDouble(runtime_telemetry.traffic_sign_fps, 1),
-                {area.x + 14, area.y + 102}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                {area.x + 14, area.y + 120}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
                 cv::LINE_AA);
     cv::putText(panel,
                 "Infer/encode ms: " +
                     formatDouble(runtime_telemetry.traffic_sign_inference_ms, 1) + " / " +
                     formatDouble(runtime_telemetry.stream_encode_ms, 1),
-                {area.x + 14, area.y + 120}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                {area.x + 14, area.y + 138}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
                 cv::LINE_AA);
     cv::putText(panel,
                 "Drop sign/stream: " +
                     std::to_string(runtime_telemetry.traffic_sign_dropped_frames) + " / " +
                     std::to_string(runtime_telemetry.stream_dropped_frames),
-                {area.x + 14, area.y + 138}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                {area.x + 14, area.y + 156}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
                 cv::LINE_AA);
     std::string summary = "Active: none";
     cv::Scalar summary_color = kTextSecondary;
@@ -197,7 +201,7 @@ void AutonomousControlDebugRenderer::drawTrafficSignStatus(
         summary_color = kDangerColor;
     }
 
-    cv::putText(panel, summary, {area.x + 14, area.y + 148}, cv::FONT_HERSHEY_SIMPLEX, 0.38,
+    cv::putText(panel, summary, {area.x + 14, area.y + 166}, cv::FONT_HERSHEY_SIMPLEX, 0.38,
                 summary_color, 1, cv::LINE_AA);
 }
 

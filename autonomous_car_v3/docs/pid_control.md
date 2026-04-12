@@ -12,6 +12,19 @@ Fluxo:
 4. O comando final passa por clamp + rate limit.
 5. No binario de hardware, o sink aplica `forward/stop` e `setSteering`.
 
+```mermaid
+flowchart LR
+    frame["Frame e segmentacao"] --> refs["Referencias near / mid / far"]
+    refs --> preview["Erro composto<br/>preview_error =<br/>near_error * near_weight +<br/>mid_error * mid_weight +<br/>far_error * far_weight"]
+    preview --> renorm["Pesos renormalizados quando alguma referencia valida falta"]
+    renorm --> pid["PID calcula a correcao"]
+    pid --> limit["Comando final passa por<br/>rate limit + clamp"]
+    limit --> snapshot["snapshot.steering_command<br/>snapshot.motion_command"]
+    snapshot --> sink["No binario de hardware, o sink aplica"]
+    sink --> motion["forward() ou stop()"]
+    sink --> steering["setSteering()"]
+```
+
 ## Erro composto
 
 O erro do controlador nao usa apenas o ponto mais proximo. Ele calcula:

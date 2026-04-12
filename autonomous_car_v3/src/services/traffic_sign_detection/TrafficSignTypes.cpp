@@ -87,22 +87,31 @@ TrafficSignId trafficSignIdFromModelLabel(std::string_view label) {
     return TrafficSignId::Unknown;
 }
 
-TrafficSignRoi buildTrafficSignRoi(cv::Size frame_size, double right_width_ratio,
-                                   double top_ratio, double bottom_ratio) {
+double trafficSignRoiRightWidthRatio(const TrafficSignRoi &roi) {
+    return std::clamp(roi.right_ratio - roi.left_ratio, 0.0, 1.0);
+}
+
+TrafficSignRoi buildTrafficSignRoi(cv::Size frame_size, double left_ratio, double right_ratio,
+                                   double top_ratio, double bottom_ratio,
+                                   bool debug_roi_enabled) {
     TrafficSignRoi roi;
-    roi.right_width_ratio = std::clamp(right_width_ratio, 0.05, 1.0);
+    roi.left_ratio = std::clamp(left_ratio, 0.0, 0.95);
+    roi.right_ratio = std::clamp(right_ratio, roi.left_ratio + 0.01, 1.0);
     roi.top_ratio = std::clamp(top_ratio, 0.0, 0.95);
     roi.bottom_ratio = std::clamp(bottom_ratio, roi.top_ratio + 0.01, 1.0);
+    roi.debug_roi_enabled = debug_roi_enabled;
+    roi.source_frame_size = frame_size;
 
     if (frame_size.width <= 0 || frame_size.height <= 0) {
         return roi;
     }
 
-    const int roi_width = std::clamp(
-        static_cast<int>(std::lround(static_cast<double>(frame_size.width) *
-                                     roi.right_width_ratio)),
-        1, frame_size.width);
-    const int roi_x = std::clamp(frame_size.width - roi_width, 0, frame_size.width - 1);
+    const int left_x = std::clamp(
+        static_cast<int>(std::lround(static_cast<double>(frame_size.width) * roi.left_ratio)),
+        0, frame_size.width - 1);
+    const int right_x = std::clamp(
+        static_cast<int>(std::lround(static_cast<double>(frame_size.width) * roi.right_ratio)),
+        left_x + 1, frame_size.width);
     const int top_y = std::clamp(
         static_cast<int>(std::lround(static_cast<double>(frame_size.height) * roi.top_ratio)),
         0, frame_size.height - 1);
@@ -111,8 +120,16 @@ TrafficSignRoi buildTrafficSignRoi(cv::Size frame_size, double right_width_ratio
                                      roi.bottom_ratio)),
         top_y + 1, frame_size.height);
 
-    roi.frame_rect = cv::Rect(roi_x, top_y, roi_width, bottom_y - top_y);
+    roi.frame_rect = cv::Rect(left_x, top_y, std::max(1, right_x - left_x), bottom_y - top_y);
     return roi;
+}
+
+TrafficSignRoi buildTrafficSignRoi(cv::Size frame_size, double right_width_ratio,
+                                   double top_ratio, double bottom_ratio,
+                                   bool debug_roi_enabled) {
+    const double clamped_width_ratio = std::clamp(right_width_ratio, 0.05, 1.0);
+    return buildTrafficSignRoi(frame_size, std::clamp(1.0 - clamped_width_ratio, 0.0, 0.95),
+                               1.0, top_ratio, bottom_ratio, debug_roi_enabled);
 }
 
 TrafficSignBoundingBox scaleBoundingBox(const TrafficSignBoundingBox &bbox, cv::Size from_size,

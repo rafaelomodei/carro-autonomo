@@ -272,10 +272,10 @@ std::unique_ptr<ts::TrafficSignDetector> createTrafficSignDetector(
 ts::TrafficSignFrameResult makeInitialTrafficSignResult(const ts::TrafficSignConfig &config,
                                                         ts::TrafficSignDetectorState state,
                                                         std::string error = {}) {
-    ts::TrafficSignRoi roi;
-    roi.right_width_ratio = config.roi_right_width_ratio;
-    roi.top_ratio = config.roi_top_ratio;
-    roi.bottom_ratio = config.roi_bottom_ratio;
+    const ts::TrafficSignRoi roi =
+        ts::buildTrafficSignRoi({}, config.roi_left_ratio, config.roi_right_ratio,
+                                config.roi_top_ratio, config.roi_bottom_ratio,
+                                config.debug_roi_enabled);
     return ts::makeTrafficSignFrameResult(state, roi, 0, std::move(error));
 }
 
@@ -763,9 +763,11 @@ void RoadSegmentationService::run() {
                                 now >= next_traffic_sign_enqueue) {
                                 const ts::TrafficSignRoi roi = ts::buildTrafficSignRoi(
                                     current_frame.size(),
-                                    state.traffic_sign_config.roi_right_width_ratio,
+                                    state.traffic_sign_config.roi_left_ratio,
+                                    state.traffic_sign_config.roi_right_ratio,
                                     state.traffic_sign_config.roi_top_ratio,
-                                    state.traffic_sign_config.roi_bottom_ratio);
+                                    state.traffic_sign_config.roi_bottom_ratio,
+                                    state.traffic_sign_config.debug_roi_enabled);
                                 if (roi.frame_rect.area() > 0) {
                                     TrafficSignJob job;
                                     job.timestamp_ms = timestamp_ms;

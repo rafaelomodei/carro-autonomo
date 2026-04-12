@@ -52,8 +52,8 @@ TrafficSignFrameResult EdgeImpulseTrafficSignDetector::detect(
     const cv::Size full_frame_size =
         input.full_frame_size.area() > 0 ? input.full_frame_size : frame.size();
     const TrafficSignRoi roi = input.roi.value_or(buildTrafficSignRoi(
-        full_frame_size, config_.roi_right_width_ratio, config_.roi_top_ratio,
-        config_.roi_bottom_ratio));
+        full_frame_size, config_.roi_left_ratio, config_.roi_right_ratio,
+        config_.roi_top_ratio, config_.roi_bottom_ratio, config_.debug_roi_enabled));
 
     if (!config_.enabled) {
         return makeTrafficSignFrameResult(TrafficSignDetectorState::Disabled, roi, timestamp_ms);
@@ -194,8 +194,9 @@ TrafficSignFrameResult EdgeImpulseTrafficSignDetector::makeErrorResult(
     const std::string &error_message) const {
     return makeTrafficSignFrameResult(
         TrafficSignDetectorState::Error,
-        buildTrafficSignRoi(frame_size, config_.roi_right_width_ratio, config_.roi_top_ratio,
-                            config_.roi_bottom_ratio),
+        buildTrafficSignRoi(frame_size, config_.roi_left_ratio, config_.roi_right_ratio,
+                            config_.roi_top_ratio, config_.roi_bottom_ratio,
+                            config_.debug_roi_enabled),
         timestamp_ms, error_message);
 }
 

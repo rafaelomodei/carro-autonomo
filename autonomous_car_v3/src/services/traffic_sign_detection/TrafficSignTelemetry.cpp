@@ -89,12 +89,16 @@ std::string buildTrafficSignTelemetryJson(const TrafficSignFrameResult &result,
     stream << ",\"source\":\"" << jsonEscape(source) << "\"";
     stream << ",\"detector_state\":\"" << toString(result.detector_state) << "\"";
     stream << ",\"roi\":{";
-    stream << "\"right_width_ratio\":";
-    appendNumber(stream, result.roi.right_width_ratio);
+    stream << "\"left_ratio\":";
+    appendNumber(stream, result.roi.left_ratio);
+    stream << ",\"right_ratio\":";
+    appendNumber(stream, result.roi.right_ratio);
     stream << ",\"top_ratio\":";
     appendNumber(stream, result.roi.top_ratio);
     stream << ",\"bottom_ratio\":";
     appendNumber(stream, result.roi.bottom_ratio);
+    stream << ",\"right_width_ratio\":";
+    appendNumber(stream, trafficSignRoiRightWidthRatio(result.roi));
     stream << "}";
     stream << ",\"raw_detections\":[";
     for (std::size_t index = 0; index < result.raw_detections.size(); ++index) {

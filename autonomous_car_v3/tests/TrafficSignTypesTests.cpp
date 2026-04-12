@@ -39,9 +39,27 @@ void testTrafficSignBoundingBoxRemap() {
            "Bounding box no frame deve aplicar offset do ROI.");
 }
 
+void testTrafficSignFreeRoiBuildsRectFromFullFrame() {
+    const ts::TrafficSignRoi roi =
+        ts::buildTrafficSignRoi({640, 480}, 0.50, 0.75, 0.10, 0.80, false);
+
+    expect(roi.frame_rect.x == 320, "ROI livre deve usar left_ratio no frame completo.");
+    expect(roi.frame_rect.width == 160, "ROI livre deve usar right_ratio no frame completo.");
+    expect(roi.frame_rect.y == 48, "ROI livre deve usar top_ratio no frame completo.");
+    expect(roi.frame_rect.height == 336,
+           "ROI livre deve usar bottom_ratio no frame completo.");
+    expect(!roi.debug_roi_enabled, "Flag de debug da ROI deve ser preservada.");
+    expect(roi.source_frame_size == cv::Size(640, 480),
+           "ROI deve preservar o tamanho do frame de origem.");
+    expect(ts::trafficSignRoiRightWidthRatio(roi) == 0.25,
+           "Largura derivada da ROI deve permanecer disponivel.");
+}
+
 TestRegistrar traffic_sign_types_mapping_test("traffic_sign_types_label_mapping",
                                               testTrafficSignLabelNormalizationAndMapping);
 TestRegistrar traffic_sign_bbox_remap_test("traffic_sign_types_bbox_remap",
                                            testTrafficSignBoundingBoxRemap);
+TestRegistrar traffic_sign_free_roi_test("traffic_sign_types_builds_free_roi_from_full_frame",
+                                         testTrafficSignFreeRoiBuildsRectFromFullFrame);
 
 } // namespace

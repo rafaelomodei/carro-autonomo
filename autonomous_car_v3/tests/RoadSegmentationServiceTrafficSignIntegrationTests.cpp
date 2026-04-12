@@ -62,8 +62,21 @@ public:
 
     ts::TrafficSignFrameResult detect(const cv::Mat &frame,
                                       std::int64_t timestamp_ms) override {
+        ts::TrafficSignInferenceInput input;
+        input.frame = frame;
+        input.full_frame_size = frame.size();
+        return detect(input, timestamp_ms);
+    }
+
+    ts::TrafficSignFrameResult detect(const ts::TrafficSignInferenceInput &input,
+                                      std::int64_t timestamp_ms) override {
+        const cv::Size full_frame_size =
+            input.full_frame_size.area() > 0 ? input.full_frame_size : input.frame.size();
         ts::TrafficSignFrameResult frame_result = ts::makeTrafficSignFrameResult(
-            state_, ts::buildTrafficSignRoi(frame.size(), 0.45, 0.08, 0.72), timestamp_ms,
+            state_,
+            input.roi.value_or(
+                ts::buildTrafficSignRoi(full_frame_size, 0.55, 1.0, 0.08, 0.72)),
+            timestamp_ms,
             last_error_);
 
         if (state_ == ts::TrafficSignDetectorState::Error) {
@@ -87,6 +100,36 @@ public:
 private:
     ts::TrafficSignDetectorState state_;
     std::string last_error_;
+};
+
+struct CapturedTrafficSignInput {
+    cv::Size frame_size;
+    cv::Size full_frame_size;
+    ts::TrafficSignRoi roi;
+    bool seen{false};
+};
+
+class InspectingTrafficSignDetector : public FakeTrafficSignDetector {
+public:
+    explicit InspectingTrafficSignDetector(CapturedTrafficSignInput *captured_input)
+        : FakeTrafficSignDetector(ts::TrafficSignDetectorState::Idle),
+          captured_input_(captured_input) {}
+
+    ts::TrafficSignFrameResult detect(const ts::TrafficSignInferenceInput &input,
+                                      std::int64_t timestamp_ms) override {
+        if (captured_input_) {
+            captured_input_->frame_size = input.frame.size();
+            captured_input_->full_frame_size = input.full_frame_size;
+            captured_input_->roi =
+                input.roi.value_or(ts::buildTrafficSignRoi(input.full_frame_size, 0.55, 1.0,
+                                                           0.08, 0.72));
+            captured_input_->seen = true;
+        }
+        return FakeTrafficSignDetector::detect(input, timestamp_ms);
+    }
+
+private:
+    CapturedTrafficSignInput *captured_input_;
 };
 
 class SlowFakeTrafficSignDetector : public FakeTrafficSignDetector {
@@ -148,8 +191,9 @@ std::filesystem::path createVisionConfig(const std::string &source_mode,
                                          const std::filesystem::path &traffic_sign_path,
                                          double telemetry_max_fps = 30.0,
                                          double stream_max_fps = 30.0) {
-    const auto segmentation_path = std::filesystem::absolute(
-        std::filesystem::path("autonomous_car_v3/config/road_segmentation.env"));
+    const auto source_root =
+        std::filesystem::absolute(std::filesystem::path(__FILE__)).parent_path().parent_path();
+    const auto segmentation_path = source_root / "config/road_segmentation.env";
 
     return writeTextFile(
         "road_segmentation_service_vision.env",
@@ -306,6 +350,43 @@ void testServicePublishesConfirmedTrafficSignTelemetryWithFakeDetector() {
                    "Filtro temporal deve confirmar a deteccao fake.");
     expectContains(traffic_payload, "\"sign_id\":\"stop\"",
                    "Payload deve carregar o sign_id confirmado.");
+    expectContains(traffic_payload, "\"left_ratio\":0.550000",
+                   "Telemetria deve expor a ROI livre.");
+}
+
+void testServiceBuildsTrafficSignRoiFromOriginalFrame() {
+    const auto image_path = createStaticTestImage("road_segmentation_service_roi_origin.png");
+    const auto traffic_sign_path = writeTextFile(
+        "road_segmentation_service_roi_origin.env",
+        "TRAFFIC_SIGN_ENABLED=true\n"
+        "TRAFFIC_SIGN_MIN_CONSECUTIVE_FRAMES=1\n"
+        "TRAFFIC_SIGN_ROI_LEFT_RATIO=0.50\n"
+        "TRAFFIC_SIGN_ROI_RIGHT_RATIO=0.90\n"
+        "TRAFFIC_SIGN_ROI_TOP_RATIO=0.10\n"
+        "TRAFFIC_SIGN_ROI_BOTTOM_RATIO=0.70\n");
+    const auto vision_config_path = createVisionConfig("image", image_path, traffic_sign_path);
+
+    CapturedTrafficSignInput captured_input;
+    const CapturedServiceOutput output = runServiceOnce(
+        vision_config_path,
+        [&captured_input](const ts::TrafficSignConfig &) {
+            return std::make_unique<InspectingTrafficSignDetector>(&captured_input);
+        });
+
+    const std::string traffic_payload =
+        findTelemetryByType(output, "\"type\":\"telemetry.traffic_sign_detection\"");
+
+    expect(captured_input.seen, "Detector fake deve receber input de inferencia.");
+    expect(captured_input.full_frame_size == cv::Size(320, 240),
+           "Inferencia deve manter o tamanho do frame original.");
+    expect(captured_input.roi.frame_rect == cv::Rect(160, 24, 128, 144),
+           "ROI de sinalizacao deve ser calculada no frame original completo.");
+    expect(captured_input.frame_size == captured_input.roi.frame_rect.size(),
+           "Frame entregue ao detector deve ser o recorte exato da ROI.");
+    expectContains(traffic_payload, "\"left_ratio\":0.500000",
+                   "Telemetria deve refletir a ROI configurada.");
+    expectContains(traffic_payload, "\"right_ratio\":0.900000",
+                   "Telemetria deve refletir a ROI configurada.");
 }
 
 void testServicePublishesErrorWithoutStoppingSegmentation() {
@@ -474,6 +555,9 @@ TestRegistrar road_service_disabled_test(
 TestRegistrar road_service_confirmed_test(
     "road_segmentation_service_publishes_confirmed_traffic_sign_telemetry_with_fake_detector",
     testServicePublishesConfirmedTrafficSignTelemetryWithFakeDetector);
+TestRegistrar road_service_roi_origin_test(
+    "road_segmentation_service_builds_traffic_sign_roi_from_original_frame",
+    testServiceBuildsTrafficSignRoiFromOriginalFrame);
 TestRegistrar road_service_error_test(
     "road_segmentation_service_publishes_error_without_stopping_segmentation",
     testServicePublishesErrorWithoutStoppingSegmentation);

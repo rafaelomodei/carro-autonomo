@@ -21,6 +21,13 @@ cv::Rect clampRectToFrame(const cv::Rect &rect, const cv::Size &size) {
     return rect & bounds;
 }
 
+cv::Size resolveTrafficSignSourceFrameSize(const ts::TrafficSignFrameResult &traffic_sign_result,
+                                           const cv::Size &fallback_size) {
+    return traffic_sign_result.roi.source_frame_size.area() > 0
+               ? traffic_sign_result.roi.source_frame_size
+               : fallback_size;
+}
+
 void drawLabelTag(cv::Mat &image, const cv::Point &anchor, const std::string &text,
                   const cv::Scalar &color) {
     const int baseline_y = std::clamp(anchor.y, 18, std::max(18, image.rows - 6));
@@ -37,8 +44,16 @@ void drawLabelTag(cv::Mat &image, const cv::Point &anchor, const std::string &te
 }
 
 void drawDetectionBox(cv::Mat &image, const ts::TrafficSignDetection &detection,
-                      const cv::Scalar &color, int thickness, const std::string &prefix = {}) {
-    const cv::Rect rect = clampRectToFrame(ts::toCvRect(detection.bbox_frame), image.size());
+                      const cv::Size &source_frame_size, const cv::Scalar &color, int thickness,
+                      const std::string &prefix = {}) {
+    ts::TrafficSignBoundingBox render_box = detection.bbox_frame;
+    if (source_frame_size.area() > 0 && source_frame_size != image.size()) {
+        render_box = ts::clampBoundingBox(
+            ts::scaleBoundingBox(detection.bbox_frame, source_frame_size, image.size()),
+            cv::Rect(0, 0, image.cols, image.rows));
+    }
+
+    const cv::Rect rect = clampRectToFrame(ts::toCvRect(render_box), image.size());
     if (rect.area() <= 0) {
         return;
     }
@@ -58,9 +73,16 @@ void drawTrafficSignOverlay(cv::Mat &image, const ts::TrafficSignFrameResult &tr
         return;
     }
 
-    if (traffic_sign_result.roi.frame_rect.area() > 0) {
+    const cv::Size source_frame_size =
+        resolveTrafficSignSourceFrameSize(traffic_sign_result, image.size());
+
+    if (traffic_sign_result.roi.debug_roi_enabled) {
+        const ts::TrafficSignRoi render_roi = ts::buildTrafficSignRoi(
+            image.size(), traffic_sign_result.roi.left_ratio, traffic_sign_result.roi.right_ratio,
+            traffic_sign_result.roi.top_ratio, traffic_sign_result.roi.bottom_ratio,
+            traffic_sign_result.roi.debug_roi_enabled);
         const cv::Rect roi_rect =
-            clampRectToFrame(traffic_sign_result.roi.frame_rect, image.size());
+            clampRectToFrame(render_roi.frame_rect, image.size());
         if (roi_rect.area() > 0) {
             cv::rectangle(image, roi_rect, kTrafficSignRoiColor, 2, cv::LINE_AA);
             drawLabelTag(image, {roi_rect.x, roi_rect.y + 20}, "Traffic ROI",
@@ -69,16 +91,18 @@ void drawTrafficSignOverlay(cv::Mat &image, const ts::TrafficSignFrameResult &tr
     }
 
     for (const auto &detection : traffic_sign_result.raw_detections) {
-        drawDetectionBox(image, detection, kTrafficSignRawColor, 1);
+        drawDetectionBox(image, detection, source_frame_size, kTrafficSignRawColor, 1);
     }
 
     if (traffic_sign_result.candidate.has_value()) {
-        drawDetectionBox(image, *traffic_sign_result.candidate, kTrafficSignCandidateColor, 2,
+        drawDetectionBox(image, *traffic_sign_result.candidate, source_frame_size,
+                         kTrafficSignCandidateColor, 2,
                          "Candidate");
     }
 
     if (traffic_sign_result.active_detection.has_value()) {
-        drawDetectionBox(image, *traffic_sign_result.active_detection, kTrafficSignActiveColor, 3,
+        drawDetectionBox(image, *traffic_sign_result.active_detection, source_frame_size,
+                         kTrafficSignActiveColor, 3,
                          "Active");
     }
 

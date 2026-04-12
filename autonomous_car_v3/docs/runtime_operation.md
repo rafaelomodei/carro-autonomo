@@ -393,6 +393,8 @@ O `AutonomousControlService` usa a segmentacao para manter o veiculo alinhado co
 - `tracking`: pista valida e confianca suficiente
 - `fail_safe`: parada segura apos lane loss ou baixa confianca alem da tolerancia
 
+Durante `tracking`, o controle lateral segue o pipeline documentado em [`pid_control.md`](./pid_control.md): erro composto com referencias `near/mid/far`, PID calculando a correcao, comando final passando por `clamp + rate limit` e, no binario de hardware, o sink aplicando `forward/stop` e `setSteering`.
+
 Regras operacionais relevantes:
 
 - `command:autonomous:start` so tem efeito quando `driving_mode=autonomous`
@@ -508,4 +510,3 @@ Responsabilidades dos arquivos carregados no runtime:
 - sem `wiringPi`, o fluxo suportado e `autonomous_car_v3_vision_debug`
 - o stream de visao usa o mesmo WebSocket textual; nao existe endpoint HTTP/MJPEG separado
 - a deteccao de placas hoje nao comanda o veiculo; ela alimenta apenas telemetria e overlay
-

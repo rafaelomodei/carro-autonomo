@@ -41,6 +41,8 @@ const telemetryPayload = JSON.stringify({
   source: 'Camera index 0',
   detector_state: 'confirmed',
   roi: {
+    left_ratio: 0.55,
+    right_ratio: 1.0,
     right_width_ratio: 0.45,
     top_ratio: 0.08,
     bottom_ratio: 0.72,

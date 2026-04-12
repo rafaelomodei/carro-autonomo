@@ -74,8 +74,10 @@ Detalhes do controlador e do painel local em `docs/pid_control.md`.
 - `VISION_DEBUG_WINDOW_ENABLED`
 - `VISION_TELEMETRY_MAX_FPS`
 - `VISION_STREAM_MAX_FPS`
+- `TRAFFIC_SIGN_TARGET_FPS`
 - `VISION_STREAM_JPEG_QUALITY`
 - `VISION_SEGMENTATION_CONFIG_PATH`
+- `VISION_TRAFFIC_SIGN_CONFIG_PATH`
 
 Defaults:
 
@@ -85,9 +87,28 @@ VISION_CAMERA_INDEX=0
 VISION_DEBUG_WINDOW_ENABLED=true
 VISION_TELEMETRY_MAX_FPS=10
 VISION_STREAM_MAX_FPS=5
+TRAFFIC_SIGN_TARGET_FPS=4
 VISION_STREAM_JPEG_QUALITY=70
 VISION_SEGMENTATION_CONFIG_PATH=road_segmentation.env
+VISION_TRAFFIC_SIGN_CONFIG_PATH=traffic_sign.env
 ```
+
+### `config/traffic_sign.env`
+
+- `TRAFFIC_SIGN_ENABLED`
+- `TRAFFIC_SIGN_ROI_LEFT_RATIO`
+- `TRAFFIC_SIGN_ROI_RIGHT_RATIO`
+- `TRAFFIC_SIGN_ROI_TOP_RATIO`
+- `TRAFFIC_SIGN_ROI_BOTTOM_RATIO`
+- `TRAFFIC_SIGN_DEBUG_ROI_ENABLED`
+- `TRAFFIC_SIGN_MIN_CONFIDENCE`
+- `TRAFFIC_SIGN_MIN_CONSECUTIVE_FRAMES`
+- `TRAFFIC_SIGN_MAX_MISSED_FRAMES`
+- `TRAFFIC_SIGN_MAX_RAW_DETECTIONS`
+
+Compatibilidade:
+
+- `TRAFFIC_SIGN_ROI_RIGHT_WIDTH_RATIO` continua aceito como fallback quando `LEFT/RIGHT` nao forem definidos.
 
 ### `config/road_segmentation.env`
 
@@ -215,6 +236,23 @@ Telemetria publicada:
     "raw_output": 0.06,
     "output": 0.06
   }
+}
+```
+
+```json
+{
+  "type": "telemetry.traffic_sign_detection",
+  "timestamp_ms": 1710000000000,
+  "source": "Camera index 0",
+  "detector_state": "confirmed",
+  "roi": {
+    "left_ratio": 0.55,
+    "right_ratio": 1.0,
+    "top_ratio": 0.08,
+    "bottom_ratio": 0.72,
+    "right_width_ratio": 0.45
+  },
+  "raw_detections": []
 }
 ```
 

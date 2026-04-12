@@ -137,6 +137,8 @@ export interface TrafficSignDetectionTelemetry {
   source: string;
   detector_state: TrafficSignDetectorState;
   roi: {
+    left_ratio: number;
+    right_ratio: number;
     right_width_ratio: number;
     top_ratio: number;
     bottom_ratio: number;

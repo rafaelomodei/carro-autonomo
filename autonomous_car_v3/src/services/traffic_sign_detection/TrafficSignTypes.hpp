@@ -33,9 +33,12 @@ struct TrafficSignBoundingBox {
 };
 
 struct TrafficSignRoi {
-    double right_width_ratio{0.45};
+    double left_ratio{0.55};
+    double right_ratio{1.0};
     double top_ratio{0.08};
     double bottom_ratio{0.72};
+    bool debug_roi_enabled{true};
+    cv::Size source_frame_size;
     cv::Rect frame_rect;
 };
 
@@ -67,8 +70,13 @@ std::string_view toString(TrafficSignDetectorState state);
 std::string displayLabel(TrafficSignId sign_id);
 std::string normalizeModelLabel(std::string_view label);
 TrafficSignId trafficSignIdFromModelLabel(std::string_view label);
+double trafficSignRoiRightWidthRatio(const TrafficSignRoi &roi);
+TrafficSignRoi buildTrafficSignRoi(cv::Size frame_size, double left_ratio, double right_ratio,
+                                   double top_ratio, double bottom_ratio,
+                                   bool debug_roi_enabled = true);
 TrafficSignRoi buildTrafficSignRoi(cv::Size frame_size, double right_width_ratio,
-                                   double top_ratio, double bottom_ratio);
+                                   double top_ratio, double bottom_ratio,
+                                   bool debug_roi_enabled = true);
 TrafficSignBoundingBox scaleBoundingBox(const TrafficSignBoundingBox &bbox, cv::Size from_size,
                                         cv::Size to_size);
 TrafficSignBoundingBox translateBoundingBox(const TrafficSignBoundingBox &bbox,

@@ -84,6 +84,10 @@ bool loadTrafficSignConfigFromFile(const std::string &path, TrafficSignConfig &c
         return false;
     }
 
+    bool roi_left_configured = false;
+    bool roi_right_configured = false;
+    std::optional<double> legacy_right_width_ratio;
+
     std::string line;
     int line_number = 0;
     while (std::getline(file, line)) {
@@ -113,9 +117,29 @@ bool loadTrafficSignConfigFromFile(const std::string &path, TrafficSignConfig &c
             continue;
         }
 
+        if (key == "TRAFFIC_SIGN_ROI_LEFT_RATIO") {
+            if (const auto parsed = parseDouble(value)) {
+                config.roi_left_ratio = std::clamp(*parsed, 0.0, 1.0);
+                roi_left_configured = true;
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "TRAFFIC_SIGN_ROI_RIGHT_RATIO") {
+            if (const auto parsed = parseDouble(value)) {
+                config.roi_right_ratio = std::clamp(*parsed, 0.0, 1.0);
+                roi_right_configured = true;
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
         if (key == "TRAFFIC_SIGN_ROI_RIGHT_WIDTH_RATIO") {
             if (const auto parsed = parseDouble(value)) {
-                config.roi_right_width_ratio = std::clamp(*parsed, 0.05, 1.0);
+                legacy_right_width_ratio = std::clamp(*parsed, 0.05, 1.0);
             } else {
                 pushWarning(warnings, "Valor invalido para " + key);
             }
@@ -134,6 +158,15 @@ bool loadTrafficSignConfigFromFile(const std::string &path, TrafficSignConfig &c
         if (key == "TRAFFIC_SIGN_ROI_BOTTOM_RATIO") {
             if (const auto parsed = parseDouble(value)) {
                 config.roi_bottom_ratio = std::clamp(*parsed, 0.01, 1.0);
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
+        if (key == "TRAFFIC_SIGN_DEBUG_ROI_ENABLED") {
+            if (const auto parsed = parseBool(value)) {
+                config.debug_roi_enabled = *parsed;
             } else {
                 pushWarning(warnings, "Valor invalido para " + key);
             }
@@ -177,6 +210,21 @@ bool loadTrafficSignConfigFromFile(const std::string &path, TrafficSignConfig &c
         }
 
         pushWarning(warnings, "Chave desconhecida em traffic_sign.env: " + key);
+    }
+
+    if (!roi_left_configured && !roi_right_configured && legacy_right_width_ratio.has_value()) {
+        config.roi_left_ratio = std::clamp(1.0 - *legacy_right_width_ratio, 0.0, 0.95);
+        config.roi_right_ratio = 1.0;
+    }
+
+    if (config.roi_right_ratio <= config.roi_left_ratio) {
+        pushWarning(warnings,
+                    "TRAFFIC_SIGN_ROI_RIGHT_RATIO deve ser maior que "
+                    "TRAFFIC_SIGN_ROI_LEFT_RATIO. Ajustando para um minimo valido.");
+        config.roi_right_ratio = std::clamp(config.roi_left_ratio + 0.05, 0.05, 1.0);
+        if (config.roi_right_ratio <= config.roi_left_ratio) {
+            config.roi_left_ratio = std::max(0.0, config.roi_right_ratio - 0.05);
+        }
     }
 
     if (config.roi_bottom_ratio <= config.roi_top_ratio) {
