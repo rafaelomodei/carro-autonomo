@@ -24,6 +24,7 @@ import VehicleLogs from '@/components/organism/VehicleLogs';
 const DEFAULT_SELECTED_VIEWS: VisionDebugViewId[] = ['dashboard'];
 
 const formatNumber = (value: number, digits = 2) => value.toFixed(digits);
+const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
 
 const formatTimestampLabel = (timestamp: number | null) =>
   timestamp ? new Date(timestamp).toLocaleTimeString('pt-BR') : 'Aguardando';
@@ -474,6 +475,37 @@ const VehicleVisionDebug = () => {
                     <p>
                       Brutas: {trafficSignTelemetry.raw_detections.length}
                     </p>
+                    <p>
+                      Overlay ROI:{' '}
+                      {trafficSignTelemetry.roi.debug_roi_enabled === false
+                        ? 'off'
+                        : 'on'}
+                    </p>
+                    <p>
+                      ROI X:{' '}
+                      {formatPercent(trafficSignTelemetry.roi.left_ratio)} -{' '}
+                      {formatPercent(trafficSignTelemetry.roi.right_ratio)}
+                    </p>
+                    <p>
+                      ROI Y:{' '}
+                      {formatPercent(trafficSignTelemetry.roi.top_ratio)} -{' '}
+                      {formatPercent(trafficSignTelemetry.roi.bottom_ratio)}
+                    </p>
+                    {trafficSignTelemetry.roi.frame_rect ? (
+                      <p>
+                        ROI px: x={trafficSignTelemetry.roi.frame_rect.x}, y=
+                        {trafficSignTelemetry.roi.frame_rect.y}, w=
+                        {trafficSignTelemetry.roi.frame_rect.width}, h=
+                        {trafficSignTelemetry.roi.frame_rect.height}
+                      </p>
+                    ) : null}
+                    {trafficSignTelemetry.roi.source_frame_size ? (
+                      <p>
+                        Frame fonte:{' '}
+                        {trafficSignTelemetry.roi.source_frame_size.width}x
+                        {trafficSignTelemetry.roi.source_frame_size.height}
+                      </p>
+                    ) : null}
                     <p>
                       Conf.:{' '}
                       {trafficSignTelemetry.active_detection

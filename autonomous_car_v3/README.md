@@ -105,6 +105,7 @@ Defaults:
 VISION_SOURCE_MODE=camera
 VISION_CAMERA_INDEX=0
 VISION_DEBUG_WINDOW_ENABLED=true
+TRAFFIC_SIGN_DEBUG_WINDOW_ENABLED=false
 VISION_TELEMETRY_MAX_FPS=10
 VISION_STREAM_MAX_FPS=5
 TRAFFIC_SIGN_TARGET_FPS=4
@@ -154,6 +155,15 @@ Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o servico abre um dashboard expandido
 - card lateral de controle autonomo com estado, erro composto e termos `P/I/D`
 - indicador visual do comando de direção
 - mapa superior sintetico com referencias `near/mid/far` e trajetoria prevista
+
+Quando `TRAFFIC_SIGN_DEBUG_WINDOW_ENABLED=true`, o servico abre uma segunda janela
+dedicada ao debug da sinalizacao:
+
+- tile esquerdo com o recorte bruto da ROI usado na inferencia
+- tile direito com a imagem preprocessada/redimensionada enviada ao Edge Impulse
+- status do detector, confianca, FPS, tempo de inferencia e idade do resultado
+- labels carregadas do modelo compilado no binario
+- lembrete explicito de que o zip em `edgeImpulse/` nao e usado em runtime
 
 Leitura do card `Sinalizacao`:
 

@@ -31,6 +31,7 @@ std::string describeModelLabels() {
 EdgeImpulseTrafficSignDetector::EdgeImpulseTrafficSignDetector(TrafficSignConfig config)
     : config_(std::move(config)),
       input_buffer_(EI_CLASSIFIER_RAW_SAMPLE_COUNT, 0.0f) {
+    model_labels_summary_ = describeModelLabels();
     std::string validation_error;
     model_ready_ = validateModelLabels(validation_error);
     if (!model_ready_) {
@@ -56,7 +57,10 @@ TrafficSignFrameResult EdgeImpulseTrafficSignDetector::detect(
         config_.roi_top_ratio, config_.roi_bottom_ratio, config_.debug_roi_enabled));
 
     if (!config_.enabled) {
-        return makeTrafficSignFrameResult(TrafficSignDetectorState::Disabled, roi, timestamp_ms);
+        TrafficSignFrameResult frame_result =
+            makeTrafficSignFrameResult(TrafficSignDetectorState::Disabled, roi, timestamp_ms);
+        attachModelDebugInfo(frame_result, {}, false);
+        return frame_result;
     }
 
     if (!model_ready_) {
@@ -118,6 +122,7 @@ TrafficSignFrameResult EdgeImpulseTrafficSignDetector::detect(
 
     TrafficSignFrameResult frame_result =
         makeTrafficSignFrameResult(TrafficSignDetectorState::Idle, roi, timestamp_ms);
+    attachModelDebugInfo(frame_result, roi_frame, input.capture_debug_frames);
 
     const cv::Size model_input_size(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT);
     const cv::Rect roi_bounds(0, 0, roi.frame_rect.width, roi.frame_rect.height);
@@ -191,13 +196,33 @@ bool EdgeImpulseTrafficSignDetector::validateModelLabels(std::string &error_mess
 
 TrafficSignFrameResult EdgeImpulseTrafficSignDetector::makeErrorResult(
     const cv::Size &frame_size, std::int64_t timestamp_ms,
-    const std::string &error_message) const {
-    return makeTrafficSignFrameResult(
+    const std::string &error_message) {
+    TrafficSignFrameResult result = makeTrafficSignFrameResult(
         TrafficSignDetectorState::Error,
         buildTrafficSignRoi(frame_size, config_.roi_left_ratio, config_.roi_right_ratio,
                             config_.roi_top_ratio, config_.roi_bottom_ratio,
                             config_.debug_roi_enabled),
         timestamp_ms, error_message);
+    attachModelDebugInfo(result, {}, false);
+    return result;
+}
+
+void EdgeImpulseTrafficSignDetector::attachModelDebugInfo(
+    TrafficSignFrameResult &frame_result, const cv::Mat &roi_frame,
+    bool capture_debug_frames) {
+    frame_result.model_labels_summary = model_labels_summary_;
+    if (!capture_debug_frames) {
+        frame_result.debug_roi_frame.release();
+        frame_result.debug_model_input_frame.release();
+        return;
+    }
+
+    if (!roi_frame.empty()) {
+        frame_result.debug_roi_frame = roi_frame.clone();
+    }
+    if (!resized_buffer_.empty()) {
+        frame_result.debug_model_input_frame = resized_buffer_.clone();
+    }
 }
 
 void EdgeImpulseTrafficSignDetector::prepareInputBuffer(const cv::Mat &roi_frame) {

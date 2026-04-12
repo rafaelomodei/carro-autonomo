@@ -46,6 +46,17 @@ const telemetryPayload = JSON.stringify({
     right_width_ratio: 0.45,
     top_ratio: 0.08,
     bottom_ratio: 0.72,
+    debug_roi_enabled: true,
+    source_frame_size: {
+      width: 320,
+      height: 240,
+    },
+    frame_rect: {
+      x: 176,
+      y: 19,
+      width: 144,
+      height: 154,
+    },
   },
   raw_detections: [
     {
@@ -104,6 +115,11 @@ assert.equal(
   parsed.active_detection?.display_label,
   'Parada obrigatoria',
   'A deteccao ativa deve ser preservada no payload parseado.'
+);
+assert.equal(
+  parsed.roi.frame_rect?.width,
+  144,
+  'A telemetria deve preservar a geometria em pixels da ROI.'
 );
 assert.equal(
   runtimeParsed?.type,

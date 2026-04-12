@@ -142,6 +142,17 @@ export interface TrafficSignDetectionTelemetry {
     right_width_ratio: number;
     top_ratio: number;
     bottom_ratio: number;
+    debug_roi_enabled?: boolean;
+    source_frame_size?: {
+      width: number;
+      height: number;
+    };
+    frame_rect?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
   };
   raw_detections: TrafficSignDetection[];
   candidate: TrafficSignDetection | null;

@@ -106,6 +106,7 @@ struct CapturedTrafficSignInput {
     cv::Size frame_size;
     cv::Size full_frame_size;
     ts::TrafficSignRoi roi;
+    bool capture_debug_frames{false};
     bool seen{false};
 };
 
@@ -123,6 +124,7 @@ public:
             captured_input_->roi =
                 input.roi.value_or(ts::buildTrafficSignRoi(input.full_frame_size, 0.55, 1.0,
                                                            0.08, 0.72));
+            captured_input_->capture_debug_frames = input.capture_debug_frames;
             captured_input_->seen = true;
         }
         return FakeTrafficSignDetector::detect(input, timestamp_ms);
@@ -190,7 +192,8 @@ std::filesystem::path createVisionConfig(const std::string &source_mode,
                                          const std::filesystem::path &source_path,
                                          const std::filesystem::path &traffic_sign_path,
                                          double telemetry_max_fps = 30.0,
-                                         double stream_max_fps = 30.0) {
+                                         double stream_max_fps = 30.0,
+                                         bool traffic_sign_debug_window_enabled = false) {
     const auto source_root =
         std::filesystem::absolute(std::filesystem::path(__FILE__)).parent_path().parent_path();
     const auto segmentation_path = source_root / "config/road_segmentation.env";
@@ -200,6 +203,8 @@ std::filesystem::path createVisionConfig(const std::string &source_mode,
         "VISION_SOURCE_MODE=" + source_mode + "\n"
         "VISION_SOURCE_PATH=" + source_path.string() + "\n"
         "VISION_DEBUG_WINDOW_ENABLED=false\n"
+        "TRAFFIC_SIGN_DEBUG_WINDOW_ENABLED=" +
+            std::string(traffic_sign_debug_window_enabled ? "true" : "false") + "\n"
         "VISION_TELEMETRY_MAX_FPS=" + std::to_string(telemetry_max_fps) + "\n"
         "VISION_STREAM_MAX_FPS=" + std::to_string(stream_max_fps) + "\n"
         "TRAFFIC_SIGN_TARGET_FPS=4\n"
@@ -383,10 +388,32 @@ void testServiceBuildsTrafficSignRoiFromOriginalFrame() {
            "ROI de sinalizacao deve ser calculada no frame original completo.");
     expect(captured_input.frame_size == captured_input.roi.frame_rect.size(),
            "Frame entregue ao detector deve ser o recorte exato da ROI.");
+    expect(!captured_input.capture_debug_frames,
+           "Captura de debug deve ficar desligada por padrao.");
     expectContains(traffic_payload, "\"left_ratio\":0.500000",
                    "Telemetria deve refletir a ROI configurada.");
     expectContains(traffic_payload, "\"right_ratio\":0.900000",
                    "Telemetria deve refletir a ROI configurada.");
+}
+
+void testServiceCanEnableTrafficSignDebugCaptureIndependently() {
+    const auto image_path = createStaticTestImage("road_segmentation_service_sign_debug.png");
+    const auto traffic_sign_path = writeTextFile(
+        "road_segmentation_service_sign_debug.env",
+        "TRAFFIC_SIGN_ENABLED=true\n"
+        "TRAFFIC_SIGN_MIN_CONSECUTIVE_FRAMES=1\n");
+    const auto vision_config_path =
+        createVisionConfig("image", image_path, traffic_sign_path, 30.0, 30.0, true);
+
+    CapturedTrafficSignInput captured_input;
+    runServiceOnce(vision_config_path,
+                   [&captured_input](const ts::TrafficSignConfig &) {
+                       return std::make_unique<InspectingTrafficSignDetector>(&captured_input);
+                   });
+
+    expect(captured_input.seen, "Detector fake deve receber input quando o debug estiver ligado.");
+    expect(captured_input.capture_debug_frames,
+           "Flag de debug dedicada deve propagar a captura do material de inferencia.");
 }
 
 void testServicePublishesErrorWithoutStoppingSegmentation() {
@@ -558,6 +585,9 @@ TestRegistrar road_service_confirmed_test(
 TestRegistrar road_service_roi_origin_test(
     "road_segmentation_service_builds_traffic_sign_roi_from_original_frame",
     testServiceBuildsTrafficSignRoiFromOriginalFrame);
+TestRegistrar road_service_sign_debug_capture_test(
+    "road_segmentation_service_enables_dedicated_traffic_sign_debug_capture",
+    testServiceCanEnableTrafficSignDebugCaptureIndependently);
 TestRegistrar road_service_error_test(
     "road_segmentation_service_publishes_error_without_stopping_segmentation",
     testServicePublishesErrorWithoutStoppingSegmentation);

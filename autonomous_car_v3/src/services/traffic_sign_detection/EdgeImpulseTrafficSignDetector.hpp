@@ -24,12 +24,16 @@ private:
     bool validateModelLabels(std::string &error_message) const;
     TrafficSignFrameResult makeErrorResult(const cv::Size &frame_size,
                                            std::int64_t timestamp_ms,
-                                           const std::string &error_message) const;
+                                           const std::string &error_message);
+    void attachModelDebugInfo(TrafficSignFrameResult &frame_result,
+                              const cv::Mat &roi_frame,
+                              bool capture_debug_frames);
     void prepareInputBuffer(const cv::Mat &roi_frame);
 
     TrafficSignConfig config_;
     bool model_ready_{false};
     std::string last_error_;
+    std::string model_labels_summary_;
     cv::Mat grayscale_buffer_;
     cv::Mat resized_buffer_;
     std::vector<float> input_buffer_;

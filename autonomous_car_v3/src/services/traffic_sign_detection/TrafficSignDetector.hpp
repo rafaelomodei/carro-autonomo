@@ -13,6 +13,7 @@ struct TrafficSignInferenceInput {
     cv::Mat frame;
     cv::Size full_frame_size;
     std::optional<TrafficSignRoi> roi;
+    bool capture_debug_frames{false};
 };
 
 class TrafficSignDetector {

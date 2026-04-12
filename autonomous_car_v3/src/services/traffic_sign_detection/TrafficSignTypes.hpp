@@ -62,6 +62,9 @@ struct TrafficSignFrameResult {
     std::vector<TrafficSignDetection> raw_detections;
     std::optional<TrafficSignDetection> candidate;
     std::optional<TrafficSignDetection> active_detection;
+    std::string model_labels_summary;
+    cv::Mat debug_roi_frame;
+    cv::Mat debug_model_input_frame;
     std::string last_error;
 };
 

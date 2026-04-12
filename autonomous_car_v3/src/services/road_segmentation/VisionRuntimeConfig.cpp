@@ -193,6 +193,15 @@ bool loadVisionRuntimeConfigFromFile(const std::string &path, VisionRuntimeConfi
             continue;
         }
 
+        if (key == "TRAFFIC_SIGN_DEBUG_WINDOW_ENABLED") {
+            if (const auto parsed = parseBool(value)) {
+                config.traffic_sign_debug_window_enabled = *parsed;
+            } else {
+                pushWarning(warnings, "Valor invalido para " + key);
+            }
+            continue;
+        }
+
         if (key == "VISION_TELEMETRY_MAX_FPS") {
             if (const auto parsed = parseDouble(value)) {
                 config.telemetry_max_fps = std::clamp(*parsed, 0.1, 120.0);

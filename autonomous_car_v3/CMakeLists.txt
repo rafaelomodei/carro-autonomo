@@ -54,6 +54,7 @@ set(AUTONOMOUS_CAR_V3_COMMON_SOURCES
     src/services/road_segmentation/VisionRuntimeConfig.cpp
     src/services/traffic_sign_detection/EdgeImpulseTrafficSignDetector.cpp
     src/services/traffic_sign_detection/TrafficSignConfig.cpp
+    src/services/traffic_sign_detection/TrafficSignDebugRenderer.cpp
     src/services/traffic_sign_detection/TrafficSignRuntime.cpp
     src/services/traffic_sign_detection/TrafficSignTelemetry.cpp
     src/services/traffic_sign_detection/TrafficSignTemporalFilter.cpp
@@ -137,6 +138,7 @@ add_executable(autonomous_car_v3_tests
     tests/RoadSegmentationTelemetryTests.cpp
     tests/RoadSegmentationServiceTrafficSignIntegrationTests.cpp
     tests/TrafficSignConfigTests.cpp
+    tests/TrafficSignDebugRendererTests.cpp
     tests/TrafficSignMailboxTests.cpp
     tests/TrafficSignRuntimeTests.cpp
     tests/TrafficSignTelemetryTests.cpp
