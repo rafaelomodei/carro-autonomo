@@ -54,11 +54,13 @@ set(AUTONOMOUS_CAR_V3_COMMON_SOURCES
     src/services/road_segmentation/VisionRuntimeConfig.cpp
     src/services/traffic_sign_detection/EdgeImpulseTrafficSignDetector.cpp
     src/services/traffic_sign_detection/TrafficSignConfig.cpp
+    src/services/traffic_sign_detection/TrafficSignRuntime.cpp
     src/services/traffic_sign_detection/TrafficSignTelemetry.cpp
     src/services/traffic_sign_detection/TrafficSignTemporalFilter.cpp
     src/services/traffic_sign_detection/TrafficSignTypes.cpp
     src/services/vision/VisionDebugStream.cpp
     src/services/vision/VisionDebugViewRenderer.cpp
+    src/services/vision/VisionRuntimeTelemetry.cpp
     src/services/vision/VisionSubscriptionRegistry.cpp
     src/services/websocket/ClientRegistry.cpp
 )
@@ -135,11 +137,14 @@ add_executable(autonomous_car_v3_tests
     tests/RoadSegmentationTelemetryTests.cpp
     tests/RoadSegmentationServiceTrafficSignIntegrationTests.cpp
     tests/TrafficSignConfigTests.cpp
+    tests/TrafficSignMailboxTests.cpp
+    tests/TrafficSignRuntimeTests.cpp
     tests/TrafficSignTelemetryTests.cpp
     tests/TrafficSignTemporalFilterTests.cpp
     tests/TrafficSignTypesTests.cpp
     tests/VisionDebugViewRendererTests.cpp
     tests/VisionDebugStreamTests.cpp
+    tests/VisionRuntimeTelemetryTests.cpp
     tests/VisionRuntimeConfigTests.cpp
     tests/WebSocketServerTests.cpp
 )

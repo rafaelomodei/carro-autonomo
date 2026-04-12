@@ -2,6 +2,8 @@
 
 Versao focada em controle do veiculo no Raspberry Pi com um pipeline compartilhado de segmentacao de estrada, debug local e telemetria via WebSocket.
 
+Documentacao operacional atual: [`docs/runtime_operation.md`](./docs/runtime_operation.md)
+
 ## O que mudou
 
 - O pipeline de segmentacao agora vem do core compartilhado em `shared/road_segmentation`.
