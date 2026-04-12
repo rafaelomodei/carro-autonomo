@@ -32,9 +32,8 @@ Cada pasta possui seu próprio README com instruções detalhadas.
 Para configurar e compilar a aplicação em C++:
 
 ```bash
-cd autonomous_car
-./setup.sh    # instala dependências
-./build.sh    # gera executáveis
+cd autonomous_car_v3
+./build.sh    # gera executáveis com CMake + Ninja
 ./start.sh    # inicia o programa
 ```
 

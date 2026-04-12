@@ -26,6 +26,7 @@ Usa `wiringPi`, GPIO, segmentacao ao vivo e aplicacao real do comando autonomo n
 ```
 
 Se `wiringPi` nao estiver instalado, esse binario nao sera gerado.
+O script usa `Ninja` por padrao e compila em paralelo com todos os cores disponiveis do Raspberry Pi.
 
 ### 2. Visao/debug local
 
@@ -37,6 +38,25 @@ Executa WebSocket + segmentacao + PID/debug sem depender de `wiringPi`.
 ```
 
 Se o binario de hardware nao existir, `./start.sh` faz fallback automatico para este perfil.
+
+## Build
+
+Dependencia recomendada no Raspberry Pi:
+
+```bash
+sudo apt install ninja-build
+```
+
+O `build.sh` reconfigura o projeto com `Ninja` por padrao e chama o build com paralelismo automatico.
+Se a pasta `build/` ainda estiver com cache antigo de `Unix Makefiles`, ela e recriada automaticamente para migrar o gerador.
+
+Exemplos:
+
+```bash
+./build.sh
+BUILD_JOBS=4 ./build.sh
+BUILD_GENERATOR="Unix Makefiles" ./build.sh
+```
 
 ## Arquivos de configuracao
 
@@ -300,7 +320,7 @@ Semantica do stream:
 
 ```bash
 cmake -S . -B build
-cmake --build build
+cmake --build build --parallel
 cd build
 ctest --output-on-failure
 ```

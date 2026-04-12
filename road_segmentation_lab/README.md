@@ -22,6 +22,19 @@ Aplicacao standalone em **C++17 + OpenCV** para validar a segmentacao da via do 
 ```
 
 O laboratorio continua standalone, mas agora compila o core compartilhado em `../shared/road_segmentation`.
+O script usa `Ninja` por padrao e executa o build com paralelismo automatico.
+
+Se precisar instalar no Raspberry Pi:
+
+```bash
+sudo apt install ninja-build
+```
+
+Tambem e possivel ajustar a quantidade de jobs:
+
+```bash
+BUILD_JOBS=4 ./build.sh
+```
 
 ## Execução
 
