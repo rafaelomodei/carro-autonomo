@@ -163,11 +163,32 @@ void testDashboardReceivesTrafficSignStatus() {
     autoctrl::AutonomousControlSnapshot snapshot;
     vision::VisionRuntimeTelemetry runtime_telemetry;
 
+    const cv::Mat dashboard_without_overlay = renderer.render(
+        vision::VisionDebugViewId::Dashboard, segmentation_result, config, "camera",
+        "calibrated", snapshot, runtime_telemetry, ts::TrafficSignFrameResult{});
+    const cv::Mat dashboard_with_roi_only = renderer.render(
+        vision::VisionDebugViewId::Dashboard, segmentation_result, config, "camera",
+        "calibrated", snapshot, runtime_telemetry,
+        makeTrafficSignRoiOnlyResult(true));
     const cv::Mat dashboard = renderer.render(
         vision::VisionDebugViewId::Dashboard, segmentation_result, config, "camera",
         "calibrated", snapshot, runtime_telemetry, makeTrafficSignResult());
 
     expect(!dashboard.empty(), "Dashboard deve ser renderizado com sucesso.");
+    cv::Mat roi_diff;
+    cv::absdiff(dashboard_without_overlay, dashboard_with_roi_only, roi_diff);
+    const int tile_width = segmentation_result.resized_frame.cols;
+    const int tile_height = segmentation_result.resized_frame.rows;
+    const int tile_card_width = tile_width + 250;
+    const cv::Scalar original_roi_sum =
+        cv::sum(roi_diff(cv::Rect(0, 0, tile_width, tile_height)));
+    const cv::Scalar annotated_roi_sum = cv::sum(
+        roi_diff(cv::Rect(tile_card_width, tile_height, tile_width, tile_height)));
+
+    expect(original_roi_sum[0] + original_roi_sum[1] + original_roi_sum[2] > 0.0,
+           "Dashboard local deve desenhar a ROI de sinalizacao no tile original.");
+    expect(annotated_roi_sum[0] + annotated_roi_sum[1] + annotated_roi_sum[2] > 0.0,
+           "Dashboard local deve desenhar a ROI de sinalizacao no tile anotado.");
 }
 
 TestRegistrar vision_annotated_overlay_test("vision_debug_view_renderer_annotated_overlay",

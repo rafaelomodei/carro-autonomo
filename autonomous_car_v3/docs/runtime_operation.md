@@ -501,8 +501,21 @@ Responsabilidades dos arquivos carregados no runtime:
 - `config/traffic_sign.env`
   - enable/disable de placas
   - definicao da ROI
+  - toggle visual do contorno da ROI (`TRAFFIC_SIGN_DEBUG_ROI_ENABLED`)
   - confianca minima
   - filtro temporal de confirmacao e expiracao
+
+### Card de sinalizacao no dashboard local
+
+Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o painel local mostra a ROI de placas e as deteccoes sobre os tiles `Original` e `Saida anotada`. O card `Sinalizacao` da lateral resume:
+
+- `Core FPS`: taxa do loop principal que le captura e segmenta a imagem.
+- `UI FPS`: taxa dos frames que realmente foram codificados e enviados para a interface.
+- `Placa FPS`: taxa efetiva das inferencias de sinalizacao.
+- `Infer placa`: tempo da inferencia de placas em milissegundos.
+- `UI enc`: tempo de codificacao do frame JPEG em milissegundos.
+- `Drop P/UI`: backlog descartado na fila de jobs de placas e na fila do stream.
+- `idade`: idade do ultimo resultado de sinalizacao ainda considerado valido para overlay.
 
 ## Limites atuais
 

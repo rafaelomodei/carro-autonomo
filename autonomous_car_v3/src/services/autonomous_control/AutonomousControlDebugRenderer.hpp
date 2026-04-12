@@ -39,6 +39,10 @@ private:
         const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
             &traffic_sign_result,
         const cv::Rect &area);
+    static void drawTrafficSignOverlayOnSegmentationPanel(
+        cv::Mat &panel, const road_segmentation_lab::pipeline::RoadSegmentationResult &result,
+        const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
+            &traffic_sign_result);
     static void drawSteeringGauge(cv::Mat &panel, const AutonomousControlSnapshot &snapshot,
                                   const cv::Rect &area);
     static void drawTopDownPreview(cv::Mat &panel, const AutonomousControlSnapshot &snapshot,

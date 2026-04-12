@@ -130,9 +130,20 @@ Se a fonte local falhar, o servico tenta fallback para a camera configurada.
 Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o servico abre um dashboard expandido:
 
 - painel 2x2 da segmentacao compartilhada
+- ROI e bounding boxes de sinalizacao desenhadas nos tiles `Original` e `Saida anotada`
 - card lateral de controle autonomo com estado, erro composto e termos `P/I/D`
 - indicador visual do comando de direção
 - mapa superior sintetico com referencias `near/mid/far` e trajetoria prevista
+
+Leitura do card `Sinalizacao`:
+
+- `Core FPS`: frequencia do loop principal de captura + segmentacao.
+- `UI FPS`: frequencia dos frames realmente codificados e enviados para a interface.
+- `Placa FPS`: frequencia das inferencias de sinalizacao.
+- `Infer placa`: tempo medio da inferencia de placas em milissegundos.
+- `UI enc`: tempo de codificacao do frame JPEG da interface em milissegundos.
+- `Drop P/UI`: quantos jobs foram descartados na fila da sinalizacao e no stream quando o consumidor ficou mais lento que o produtor.
+- `idade`: atraso do ultimo resultado de placa usado no overlay.
 
 Atalhos:
 

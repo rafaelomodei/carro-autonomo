@@ -28,6 +28,15 @@ cv::Size resolveTrafficSignSourceFrameSize(const ts::TrafficSignFrameResult &tra
                : fallback_size;
 }
 
+bool hasTrafficSignOverlayData(const ts::TrafficSignFrameResult &traffic_sign_result) {
+    return traffic_sign_result.roi.source_frame_size.area() > 0 ||
+           traffic_sign_result.roi.frame_rect.area() > 0 ||
+           !traffic_sign_result.raw_detections.empty() ||
+           traffic_sign_result.candidate.has_value() ||
+           traffic_sign_result.active_detection.has_value() ||
+           !traffic_sign_result.last_error.empty();
+}
+
 void drawLabelTag(cv::Mat &image, const cv::Point &anchor, const std::string &text,
                   const cv::Scalar &color) {
     const int baseline_y = std::clamp(anchor.y, 18, std::max(18, image.rows - 6));
@@ -69,7 +78,7 @@ void drawDetectionBox(cv::Mat &image, const ts::TrafficSignDetection &detection,
 }
 
 void drawTrafficSignOverlay(cv::Mat &image, const ts::TrafficSignFrameResult &traffic_sign_result) {
-    if (image.empty()) {
+    if (image.empty() || !hasTrafficSignOverlayData(traffic_sign_result)) {
         return;
     }
 
