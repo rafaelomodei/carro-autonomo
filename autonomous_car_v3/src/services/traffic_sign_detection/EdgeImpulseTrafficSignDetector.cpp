@@ -40,9 +40,20 @@ EdgeImpulseTrafficSignDetector::EdgeImpulseTrafficSignDetector(TrafficSignConfig
 
 TrafficSignFrameResult EdgeImpulseTrafficSignDetector::detect(const cv::Mat &frame,
                                                               std::int64_t timestamp_ms) {
-    const TrafficSignRoi roi =
-        buildTrafficSignRoi(frame.size(), config_.roi_right_width_ratio, config_.roi_top_ratio,
-                            config_.roi_bottom_ratio);
+    TrafficSignInferenceInput input;
+    input.frame = frame;
+    input.full_frame_size = frame.size();
+    return detect(input, timestamp_ms);
+}
+
+TrafficSignFrameResult EdgeImpulseTrafficSignDetector::detect(
+    const TrafficSignInferenceInput &input, std::int64_t timestamp_ms) {
+    const cv::Mat &frame = input.frame;
+    const cv::Size full_frame_size =
+        input.full_frame_size.area() > 0 ? input.full_frame_size : frame.size();
+    const TrafficSignRoi roi = input.roi.value_or(buildTrafficSignRoi(
+        full_frame_size, config_.roi_right_width_ratio, config_.roi_top_ratio,
+        config_.roi_bottom_ratio));
 
     if (!config_.enabled) {
         return makeTrafficSignFrameResult(TrafficSignDetectorState::Disabled, roi, timestamp_ms);
@@ -54,17 +65,34 @@ TrafficSignFrameResult EdgeImpulseTrafficSignDetector::detect(const cv::Mat &fra
 
     if (frame.empty()) {
         last_error_ = "Frame vazio recebido pelo detector de sinalizacao.";
-        return makeErrorResult(frame.size(), timestamp_ms, last_error_);
+        return makeErrorResult(full_frame_size, timestamp_ms, last_error_);
     }
 
-    if (roi.frame_rect.area() <= 0 || roi.frame_rect.x < 0 || roi.frame_rect.y < 0 ||
-        roi.frame_rect.x + roi.frame_rect.width > frame.cols ||
-        roi.frame_rect.y + roi.frame_rect.height > frame.rows) {
+    if (roi.frame_rect.area() <= 0 || roi.frame_rect.width <= 0 || roi.frame_rect.height <= 0 ||
+        roi.frame_rect.x < 0 || roi.frame_rect.y < 0 ||
+        roi.frame_rect.x + roi.frame_rect.width > full_frame_size.width ||
+        roi.frame_rect.y + roi.frame_rect.height > full_frame_size.height) {
         last_error_ = "ROI de sinalizacao invalido para o frame atual.";
-        return makeErrorResult(frame.size(), timestamp_ms, last_error_);
+        return makeErrorResult(full_frame_size, timestamp_ms, last_error_);
     }
 
-    prepareInputBuffer(frame(roi.frame_rect));
+    cv::Mat roi_frame;
+    if (input.roi.has_value()) {
+        if (frame.cols != roi.frame_rect.width || frame.rows != roi.frame_rect.height) {
+            last_error_ = "Frame de ROI nao corresponde ao recorte configurado.";
+            return makeErrorResult(full_frame_size, timestamp_ms, last_error_);
+        }
+        roi_frame = frame;
+    } else {
+        if (roi.frame_rect.x + roi.frame_rect.width > frame.cols ||
+            roi.frame_rect.y + roi.frame_rect.height > frame.rows) {
+            last_error_ = "ROI de sinalizacao fora dos limites do frame recebido.";
+            return makeErrorResult(full_frame_size, timestamp_ms, last_error_);
+        }
+        roi_frame = frame(roi.frame_rect);
+    }
+
+    prepareInputBuffer(roi_frame);
 
     ei::signal_t signal;
     signal.total_length = input_buffer_.size();
@@ -83,7 +111,7 @@ TrafficSignFrameResult EdgeImpulseTrafficSignDetector::detect(const cv::Mat &fra
     const EI_IMPULSE_ERROR run_error = run_classifier(&signal, &result, false);
     if (run_error != EI_IMPULSE_OK) {
         last_error_ = "Falha ao executar inferencia do Edge Impulse.";
-        return makeErrorResult(frame.size(), timestamp_ms, last_error_);
+        return makeErrorResult(full_frame_size, timestamp_ms, last_error_);
     }
 
     last_error_.clear();
@@ -93,7 +121,7 @@ TrafficSignFrameResult EdgeImpulseTrafficSignDetector::detect(const cv::Mat &fra
 
     const cv::Size model_input_size(EI_CLASSIFIER_INPUT_WIDTH, EI_CLASSIFIER_INPUT_HEIGHT);
     const cv::Rect roi_bounds(0, 0, roi.frame_rect.width, roi.frame_rect.height);
-    const cv::Rect frame_bounds(0, 0, frame.cols, frame.rows);
+    const cv::Rect frame_bounds(0, 0, full_frame_size.width, full_frame_size.height);
 
     for (std::uint32_t index = 0; index < result.bounding_boxes_count; ++index) {
         const auto &bbox = result.bounding_boxes[index];

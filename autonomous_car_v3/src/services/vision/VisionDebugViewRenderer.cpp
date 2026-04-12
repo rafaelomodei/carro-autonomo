@@ -97,6 +97,7 @@ cv::Mat VisionDebugViewRenderer::render(
     const std::string &calibration_status,
     const autonomous_car::services::autonomous_control::AutonomousControlSnapshot
         &snapshot,
+    const VisionRuntimeTelemetry &runtime_telemetry,
     const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
         &traffic_sign_result) const {
     switch (view) {
@@ -113,7 +114,7 @@ cv::Mat VisionDebugViewRenderer::render(
     }
     case VisionDebugViewId::Dashboard:
         return dashboard_renderer_.render(result, config, source_label, calibration_status,
-                                          snapshot, traffic_sign_result);
+                                          snapshot, runtime_telemetry, traffic_sign_result);
     }
 
     return cv::Mat();

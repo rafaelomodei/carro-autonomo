@@ -17,6 +17,8 @@ public:
 
     TrafficSignFrameResult detect(const cv::Mat &frame,
                                   std::int64_t timestamp_ms) override;
+    TrafficSignFrameResult detect(const TrafficSignInferenceInput &input,
+                                  std::int64_t timestamp_ms) override;
 
 private:
     bool validateModelLabels(std::string &error_message) const;

@@ -112,6 +112,7 @@ const VehicleVisionDebug = () => {
     lastTelemetryAt,
     roadSegmentationTelemetry,
     trafficSignTelemetry,
+    visionRuntimeTelemetry,
   } = useVehicleConfig();
   const {
     connectionState: visionConnectionState,
@@ -493,6 +494,50 @@ const VehicleVisionDebug = () => {
                   </>
                 ) : (
                   <p>Aguardando telemetria de sinalizacao.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className='border-border/70 bg-card/70'>
+              <CardHeader className='pb-3'>
+                <CardTitle className='text-base'>Performance</CardTitle>
+              </CardHeader>
+              <CardContent className='space-y-1 text-sm text-muted-foreground'>
+                {visionRuntimeTelemetry ? (
+                  <>
+                    <p>Core FPS: {formatNumber(visionRuntimeTelemetry.core_fps, 1)}</p>
+                    <p>
+                      Stream FPS: {formatNumber(visionRuntimeTelemetry.stream_fps, 1)}
+                    </p>
+                    <p>
+                      Sign FPS:{' '}
+                      {formatNumber(visionRuntimeTelemetry.traffic_sign_fps, 1)}
+                    </p>
+                    <p>
+                      Infer ms:{' '}
+                      {formatNumber(
+                        visionRuntimeTelemetry.traffic_sign_inference_ms,
+                        1
+                      )}
+                    </p>
+                    <p>
+                      Encode ms:{' '}
+                      {formatNumber(visionRuntimeTelemetry.stream_encode_ms, 1)}
+                    </p>
+                    <p>
+                      Drop sign/stream:{' '}
+                      {visionRuntimeTelemetry.traffic_sign_dropped_frames} /{' '}
+                      {visionRuntimeTelemetry.stream_dropped_frames}
+                    </p>
+                    <p>
+                      Idade sinal:{' '}
+                      {visionRuntimeTelemetry.sign_result_age_ms >= 0
+                        ? `${visionRuntimeTelemetry.sign_result_age_ms} ms`
+                        : 'sem resultado'}
+                    </p>
+                  </>
+                ) : (
+                  <p>Aguardando telemetria de runtime.</p>
                 )}
               </CardContent>
             </Card>

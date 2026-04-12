@@ -11,6 +11,7 @@ namespace autonomous_car::services::autonomous_control {
 namespace {
 
 namespace ts = autonomous_car::services::traffic_sign_detection;
+namespace vision = autonomous_car::services::vision;
 
 const cv::Scalar kPanelBackground{18, 18, 18};
 const cv::Scalar kPanelSection{28, 28, 28};
@@ -63,6 +64,7 @@ cv::Mat AutonomousControlDebugRenderer::render(
     const road_segmentation_lab::pipeline::RoadSegmentationResult &result,
     const road_segmentation_lab::config::LabConfig &config, const std::string &source_label,
     const std::string &calibration_status, const AutonomousControlSnapshot &snapshot,
+    const vision::VisionRuntimeTelemetry &runtime_telemetry,
     const ts::TrafficSignFrameResult &traffic_sign_result) const {
     cv::Mat segmentation_panel =
         segmentation_renderer_.render(result, config, source_label, calibration_status);
@@ -70,7 +72,7 @@ cv::Mat AutonomousControlDebugRenderer::render(
         return segmentation_panel;
     }
 
-    cv::Mat control_panel = buildControlPanel(snapshot, traffic_sign_result,
+    cv::Mat control_panel = buildControlPanel(snapshot, runtime_telemetry, traffic_sign_result,
                                               {kPanelWidth, segmentation_panel.rows});
     cv::Mat full_panel;
     cv::hconcat(segmentation_panel, control_panel, full_panel);
@@ -78,21 +80,23 @@ cv::Mat AutonomousControlDebugRenderer::render(
 }
 
 cv::Mat AutonomousControlDebugRenderer::buildControlPanel(
-    const AutonomousControlSnapshot &snapshot, const ts::TrafficSignFrameResult &traffic_sign_result,
+    const AutonomousControlSnapshot &snapshot,
+    const vision::VisionRuntimeTelemetry &runtime_telemetry,
+    const ts::TrafficSignFrameResult &traffic_sign_result,
     cv::Size size) {
     cv::Mat panel(size, CV_8UC3, kPanelBackground);
     const int padding = 18;
     const int inner_width = panel.cols - padding * 2;
     const cv::Rect control_area(padding, padding, inner_width, 108);
     const cv::Rect traffic_area(padding, control_area.y + control_area.height + 12, inner_width,
-                                112);
+                                152);
     const cv::Rect gauge_area(padding, traffic_area.y + traffic_area.height + 12, inner_width,
                               96);
     const int top_down_y = gauge_area.y + gauge_area.height + 12;
     const int top_down_height = std::max(96, panel.rows - top_down_y - padding);
 
     drawControlStatus(panel, snapshot, control_area);
-    drawTrafficSignStatus(panel, traffic_sign_result, traffic_area);
+    drawTrafficSignStatus(panel, runtime_telemetry, traffic_sign_result, traffic_area);
     drawSteeringGauge(panel, snapshot, gauge_area);
     drawTopDownPreview(panel, snapshot,
                        {padding, top_down_y, inner_width, top_down_height});
@@ -135,7 +139,8 @@ void AutonomousControlDebugRenderer::drawControlStatus(cv::Mat &panel,
 }
 
 void AutonomousControlDebugRenderer::drawTrafficSignStatus(
-    cv::Mat &panel, const ts::TrafficSignFrameResult &traffic_sign_result,
+    cv::Mat &panel, const vision::VisionRuntimeTelemetry &runtime_telemetry,
+    const ts::TrafficSignFrameResult &traffic_sign_result,
     const cv::Rect &area) {
     cv::rectangle(panel, area, kPanelSection, cv::FILLED);
     cv::rectangle(panel, area, kPanelBorder, 1, cv::LINE_AA);
@@ -156,6 +161,24 @@ void AutonomousControlDebugRenderer::drawTrafficSignStatus(
                 "Brutas: " + std::to_string(traffic_sign_result.raw_detections.size()),
                 {area.x + 14, area.y + 84}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
                 cv::LINE_AA);
+    cv::putText(panel,
+                "FPS core/stream/sign: " + formatDouble(runtime_telemetry.core_fps, 1) + " / " +
+                    formatDouble(runtime_telemetry.stream_fps, 1) + " / " +
+                    formatDouble(runtime_telemetry.traffic_sign_fps, 1),
+                {area.x + 14, area.y + 102}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "Infer/encode ms: " +
+                    formatDouble(runtime_telemetry.traffic_sign_inference_ms, 1) + " / " +
+                    formatDouble(runtime_telemetry.stream_encode_ms, 1),
+                {area.x + 14, area.y + 120}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "Drop sign/stream: " +
+                    std::to_string(runtime_telemetry.traffic_sign_dropped_frames) + " / " +
+                    std::to_string(runtime_telemetry.stream_dropped_frames),
+                {area.x + 14, area.y + 138}, cv::FONT_HERSHEY_SIMPLEX, 0.38, kTextSecondary, 1,
+                cv::LINE_AA);
     std::string summary = "Active: none";
     cv::Scalar summary_color = kTextSecondary;
 
@@ -174,7 +197,7 @@ void AutonomousControlDebugRenderer::drawTrafficSignStatus(
         summary_color = kDangerColor;
     }
 
-    cv::putText(panel, summary, {area.x + 14, area.y + 102}, cv::FONT_HERSHEY_SIMPLEX, 0.38,
+    cv::putText(panel, summary, {area.x + 14, area.y + 148}, cv::FONT_HERSHEY_SIMPLEX, 0.38,
                 summary_color, 1, cv::LINE_AA);
 }
 

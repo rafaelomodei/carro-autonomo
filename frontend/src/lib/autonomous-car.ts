@@ -147,6 +147,20 @@ export interface TrafficSignDetectionTelemetry {
   last_error: string;
 }
 
+export interface VisionRuntimeTelemetry {
+  type: 'telemetry.vision_runtime';
+  timestamp_ms: number;
+  source: string;
+  core_fps: number;
+  stream_fps: number;
+  traffic_sign_fps: number;
+  traffic_sign_inference_ms: number;
+  stream_encode_ms: number;
+  traffic_sign_dropped_frames: number;
+  stream_dropped_frames: number;
+  sign_result_age_ms: number;
+}
+
 export interface VisionFrameMessage {
   type: 'vision.frame';
   view: VisionDebugViewId;
@@ -160,7 +174,8 @@ export interface VisionFrameMessage {
 export type VehicleTelemetryMessage =
   | RoadSegmentationTelemetry
   | AutonomousControlTelemetry
-  | TrafficSignDetectionTelemetry;
+  | TrafficSignDetectionTelemetry
+  | VisionRuntimeTelemetry;
 
 export const DEFAULT_VEHICLE_CONNECTION_URL =
   process.env.NEXT_PUBLIC_DEFAULT_VEHICLE_WS_URL?.trim() ||
@@ -206,7 +221,8 @@ export const parseTelemetryMessage = (
       typeof parsed === 'object' &&
       (parsed.type === 'telemetry.road_segmentation' ||
         parsed.type === 'telemetry.autonomous_control' ||
-        parsed.type === 'telemetry.traffic_sign_detection')
+        parsed.type === 'telemetry.traffic_sign_detection' ||
+        parsed.type === 'telemetry.vision_runtime')
     ) {
       return parsed;
     }

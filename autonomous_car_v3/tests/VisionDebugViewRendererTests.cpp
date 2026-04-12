@@ -9,6 +9,7 @@
 #include "services/autonomous_control/AutonomousControlTypes.hpp"
 #include "services/traffic_sign_detection/TrafficSignTypes.hpp"
 #include "services/vision/VisionDebugViewRenderer.hpp"
+#include "services/vision/VisionRuntimeTelemetry.hpp"
 
 namespace {
 
@@ -66,13 +67,14 @@ void testAnnotatedViewReceivesTrafficSignOverlay() {
     const auto segmentation_result = makeSegmentationResult();
     rsl::config::LabConfig config;
     autoctrl::AutonomousControlSnapshot snapshot;
+    vision::VisionRuntimeTelemetry runtime_telemetry;
 
     const cv::Mat without_overlay = renderer.render(
         vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, ts::TrafficSignFrameResult{});
+        "calibrated", snapshot, runtime_telemetry, ts::TrafficSignFrameResult{});
     const cv::Mat with_overlay = renderer.render(
         vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, makeTrafficSignResult());
+        "calibrated", snapshot, runtime_telemetry, makeTrafficSignResult());
 
     cv::Mat diff;
     cv::absdiff(without_overlay, with_overlay, diff);
@@ -88,10 +90,11 @@ void testDashboardReceivesTrafficSignStatus() {
     const auto segmentation_result = makeSegmentationResult();
     rsl::config::LabConfig config;
     autoctrl::AutonomousControlSnapshot snapshot;
+    vision::VisionRuntimeTelemetry runtime_telemetry;
 
     const cv::Mat dashboard = renderer.render(
         vision::VisionDebugViewId::Dashboard, segmentation_result, config, "camera",
-        "calibrated", snapshot, makeTrafficSignResult());
+        "calibrated", snapshot, runtime_telemetry, makeTrafficSignResult());
 
     expect(!dashboard.empty(), "Dashboard deve ser renderizado com sucesso.");
 }

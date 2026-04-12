@@ -76,6 +76,21 @@ const telemetryPayload = JSON.stringify({
 });
 
 const parsed = parseTelemetryMessage(telemetryPayload);
+const runtimeParsed = parseTelemetryMessage(
+  JSON.stringify({
+    type: 'telemetry.vision_runtime',
+    timestamp_ms: 123456800,
+    source: 'Camera index 0',
+    core_fps: 19.2,
+    stream_fps: 4.5,
+    traffic_sign_fps: 3.9,
+    traffic_sign_inference_ms: 11.2,
+    stream_encode_ms: 24.4,
+    traffic_sign_dropped_frames: 2,
+    stream_dropped_frames: 6,
+    sign_result_age_ms: 140,
+  })
+);
 
 assert.ok(parsed, 'A nova telemetria de sinalizacao deve ser aceita pelo parser.');
 assert.equal(
@@ -87,6 +102,16 @@ assert.equal(
   parsed.active_detection?.display_label,
   'Parada obrigatoria',
   'A deteccao ativa deve ser preservada no payload parseado.'
+);
+assert.equal(
+  runtimeParsed?.type,
+  'telemetry.vision_runtime',
+  'O parser deve aceitar a nova telemetria de runtime.'
+);
+assert.equal(
+  runtimeParsed?.stream_dropped_frames,
+  6,
+  'A telemetria de runtime deve preservar contadores de descarte.'
 );
 assert.equal(
   formatTrafficSignDetectorStateLabel('idle'),

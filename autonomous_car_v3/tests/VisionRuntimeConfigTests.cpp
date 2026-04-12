@@ -34,6 +34,7 @@ void testVisionRuntimeConfigLoadAndResolvePaths() {
         file << "VISION_DEBUG_WINDOW_ENABLED=false\n";
         file << "VISION_TELEMETRY_MAX_FPS=15\n";
         file << "VISION_STREAM_MAX_FPS=6\n";
+        file << "TRAFFIC_SIGN_TARGET_FPS=4\n";
         file << "VISION_STREAM_JPEG_QUALITY=82\n";
         file << "VISION_SEGMENTATION_CONFIG_PATH=config/road_segmentation.env\n";
     }
@@ -51,6 +52,8 @@ void testVisionRuntimeConfigLoadAndResolvePaths() {
     expect(!config.debug_window_enabled, "VISION_DEBUG_WINDOW_ENABLED deve ser carregado.");
     expect(config.telemetry_max_fps == 15.0, "VISION_TELEMETRY_MAX_FPS deve ser carregado.");
     expect(config.stream_max_fps == 6.0, "VISION_STREAM_MAX_FPS deve ser carregado.");
+    expect(config.traffic_sign_target_fps == 4.0,
+           "TRAFFIC_SIGN_TARGET_FPS deve ser carregado.");
     expect(config.stream_jpeg_quality == 82,
            "VISION_STREAM_JPEG_QUALITY deve ser carregado.");
     expect(config.segmentation_config_path ==

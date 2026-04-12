@@ -9,6 +9,7 @@
 #include "render/DebugRenderer.hpp"
 #include "services/autonomous_control/AutonomousControlTypes.hpp"
 #include "services/traffic_sign_detection/TrafficSignTypes.hpp"
+#include "services/vision/VisionRuntimeTelemetry.hpp"
 
 namespace autonomous_car::services::autonomous_control {
 
@@ -19,12 +20,14 @@ public:
                    const std::string &source_label,
                    const std::string &calibration_status,
                    const AutonomousControlSnapshot &snapshot,
+                   const autonomous_car::services::vision::VisionRuntimeTelemetry &runtime_telemetry,
                    const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
                        &traffic_sign_result) const;
 
 private:
     static cv::Mat buildControlPanel(
         const AutonomousControlSnapshot &snapshot,
+        const autonomous_car::services::vision::VisionRuntimeTelemetry &runtime_telemetry,
         const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
             &traffic_sign_result,
         cv::Size size);
@@ -32,6 +35,7 @@ private:
                                   const cv::Rect &area);
     static void drawTrafficSignStatus(
         cv::Mat &panel,
+        const autonomous_car::services::vision::VisionRuntimeTelemetry &runtime_telemetry,
         const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
             &traffic_sign_result,
         const cv::Rect &area);

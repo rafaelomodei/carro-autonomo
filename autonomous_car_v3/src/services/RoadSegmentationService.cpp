@@ -1,11 +1,17 @@
 #include "services/RoadSegmentationService.hpp"
 
 #include <chrono>
+#include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <exception>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -14,7 +20,7 @@
 #include "config/LabConfig.hpp"
 #include "pipeline/RoadSegmentationPipeline.hpp"
 #include "pipeline/stages/FrameSource.hpp"
-#include "services/autonomous_control/AutonomousControlDebugRenderer.hpp"
+#include "services/async/LatestValueMailbox.hpp"
 #include "services/autonomous_control/AutonomousControlService.hpp"
 #include "services/autonomous_control/AutonomousControlTelemetry.hpp"
 #include "services/road_segmentation/RoadSegmentationTelemetry.hpp"
@@ -22,11 +28,13 @@
 #include "services/traffic_sign_detection/EdgeImpulseTrafficSignDetector.hpp"
 #include "services/traffic_sign_detection/TrafficSignConfig.hpp"
 #include "services/traffic_sign_detection/TrafficSignDetector.hpp"
+#include "services/traffic_sign_detection/TrafficSignRuntime.hpp"
 #include "services/traffic_sign_detection/TrafficSignTelemetry.hpp"
 #include "services/traffic_sign_detection/TrafficSignTemporalFilter.hpp"
 #include "services/traffic_sign_detection/TrafficSignTypes.hpp"
 #include "services/vision/VisionDebugStream.hpp"
 #include "services/vision/VisionDebugViewRenderer.hpp"
+#include "services/vision/VisionRuntimeTelemetry.hpp"
 
 namespace autonomous_car::services {
 namespace {
@@ -34,6 +42,7 @@ namespace {
 namespace rsl = road_segmentation_lab;
 namespace rs = autonomous_car::services::road_segmentation;
 namespace autoctrl = autonomous_car::services::autonomous_control;
+namespace async = autonomous_car::services::async;
 namespace ts = autonomous_car::services::traffic_sign_detection;
 namespace vision = autonomous_car::services::vision;
 
@@ -43,6 +52,101 @@ struct RuntimeState {
     ts::TrafficSignConfig traffic_sign_config;
     std::unique_ptr<rsl::pipeline::stages::FrameSource> source;
     std::string source_label;
+};
+
+struct CoreFrameSnapshot {
+    rsl::pipeline::RoadSegmentationResult segmentation_result;
+    autoctrl::AutonomousControlSnapshot control_snapshot;
+    std::int64_t timestamp_ms{0};
+    std::string calibration_status;
+};
+
+struct TrafficSignJob {
+    ts::TrafficSignInferenceInput input;
+    std::int64_t timestamp_ms{0};
+};
+
+struct RuntimeMetrics {
+    std::atomic<double> core_fps{0.0};
+    std::atomic<double> stream_fps{0.0};
+    std::atomic<double> traffic_sign_fps{0.0};
+    std::atomic<double> traffic_sign_inference_ms{0.0};
+    std::atomic<double> stream_encode_ms{0.0};
+};
+
+struct RateTracker {
+    std::chrono::steady_clock::time_point last_mark =
+        std::chrono::steady_clock::time_point::min();
+    double smoothed_fps{0.0};
+
+    double mark(std::chrono::steady_clock::time_point now) {
+        if (last_mark == std::chrono::steady_clock::time_point::min()) {
+            last_mark = now;
+            return smoothed_fps;
+        }
+
+        const double elapsed_seconds =
+            std::chrono::duration<double>(now - last_mark).count();
+        last_mark = now;
+        if (elapsed_seconds <= 0.0) {
+            return smoothed_fps;
+        }
+
+        const double instant_fps = 1.0 / elapsed_seconds;
+        smoothed_fps =
+            smoothed_fps <= 0.0 ? instant_fps : (smoothed_fps * 0.75) + (instant_fps * 0.25);
+        return smoothed_fps;
+    }
+};
+
+class TelemetryTopicQueue {
+public:
+    void publish(std::string topic, std::string payload) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (pending_.find(topic) == pending_.end()) {
+            topic_order_.push_back(topic);
+        }
+        pending_[std::move(topic)] = std::move(payload);
+        condition_.notify_one();
+    }
+
+    template <typename StopRequested, typename Rep, typename Period>
+    std::vector<std::string> waitPopAllFor(const std::chrono::duration<Rep, Period> &timeout,
+                                           StopRequested stop_requested) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        condition_.wait_for(lock, timeout,
+                            [&] { return !pending_.empty() || stop_requested(); });
+        return popAllLocked();
+    }
+
+    std::vector<std::string> drain() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return popAllLocked();
+    }
+
+    void notifyAll() { condition_.notify_all(); }
+
+private:
+    std::vector<std::string> popAllLocked() {
+        std::vector<std::string> payloads;
+        payloads.reserve(topic_order_.size());
+
+        for (const auto &topic : topic_order_) {
+            auto it = pending_.find(topic);
+            if (it != pending_.end()) {
+                payloads.push_back(std::move(it->second));
+            }
+        }
+
+        pending_.clear();
+        topic_order_.clear();
+        return payloads;
+    }
+
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    std::unordered_map<std::string, std::string> pending_;
+    std::vector<std::string> topic_order_;
 };
 
 void printWarnings(const char *scope, const std::vector<std::string> &warnings) {
@@ -74,36 +178,6 @@ bool shouldPublishNow(double max_fps, std::chrono::steady_clock::time_point now,
     }
 
     return false;
-}
-
-void publishVisionFrames(
-    const vision::VisionDebugViewSet &requested_views,
-    const rs::VisionRuntimeConfig &vision_config,
-    const vision::VisionDebugViewRenderer &renderer,
-    const rsl::pipeline::RoadSegmentationResult &result,
-    const rsl::config::LabConfig &config, const std::string &source_label,
-    const std::string &calibration_status,
-    const autoctrl::AutonomousControlSnapshot &snapshot,
-    const ts::TrafficSignFrameResult &traffic_sign_result, std::int64_t timestamp_ms,
-    const RoadSegmentationService::VisionFramePublisher &publisher) {
-    if (!publisher || requested_views.empty()) {
-        return;
-    }
-
-    for (const auto view : vision::allVisionDebugViews()) {
-        if (requested_views.find(view) == requested_views.end()) {
-            continue;
-        }
-
-        cv::Mat frame =
-            renderer.render(view, result, config, source_label, calibration_status, snapshot,
-                            traffic_sign_result);
-        const auto payload = vision::buildVisionFrameJson(
-            view, frame, timestamp_ms, vision_config.stream_jpeg_quality);
-        if (payload) {
-            publisher(view, *payload);
-        }
-    }
 }
 
 std::unique_ptr<rsl::pipeline::stages::FrameSource>
@@ -195,6 +269,36 @@ std::unique_ptr<ts::TrafficSignDetector> createTrafficSignDetector(
     return std::make_unique<ts::EdgeImpulseTrafficSignDetector>(config);
 }
 
+ts::TrafficSignFrameResult makeInitialTrafficSignResult(const ts::TrafficSignConfig &config,
+                                                        ts::TrafficSignDetectorState state,
+                                                        std::string error = {}) {
+    ts::TrafficSignRoi roi;
+    roi.right_width_ratio = config.roi_right_width_ratio;
+    roi.top_ratio = config.roi_top_ratio;
+    roi.bottom_ratio = config.roi_bottom_ratio;
+    return ts::makeTrafficSignFrameResult(state, roi, 0, std::move(error));
+}
+
+vision::VisionRuntimeTelemetry captureVisionRuntimeTelemetry(
+    const RuntimeMetrics &metrics, std::string_view source, std::int64_t timestamp_ms,
+    const ts::TrafficSignFrameResult &latest_traffic_sign_result, std::uint64_t sign_dropped_frames,
+    std::uint64_t stream_dropped_frames) {
+    vision::VisionRuntimeTelemetry telemetry;
+    telemetry.timestamp_ms = timestamp_ms;
+    telemetry.source = std::string(source);
+    telemetry.core_fps = metrics.core_fps.load(std::memory_order_relaxed);
+    telemetry.stream_fps = metrics.stream_fps.load(std::memory_order_relaxed);
+    telemetry.traffic_sign_fps = metrics.traffic_sign_fps.load(std::memory_order_relaxed);
+    telemetry.traffic_sign_inference_ms =
+        metrics.traffic_sign_inference_ms.load(std::memory_order_relaxed);
+    telemetry.stream_encode_ms = metrics.stream_encode_ms.load(std::memory_order_relaxed);
+    telemetry.traffic_sign_dropped_frames = sign_dropped_frames;
+    telemetry.stream_dropped_frames = stream_dropped_frames;
+    telemetry.sign_result_age_ms =
+        ts::trafficSignResultAgeMs(latest_traffic_sign_result, timestamp_ms);
+    return telemetry;
+}
+
 } // namespace
 
 RoadSegmentationService::RoadSegmentationService(std::string vision_config_path,
@@ -244,214 +348,489 @@ void RoadSegmentationService::run() {
             return;
         }
 
-        rsl::pipeline::RoadSegmentationPipeline pipeline(state.segmentation_config);
-        vision::VisionDebugViewRenderer vision_renderer;
         auto traffic_sign_detector =
             createTrafficSignDetector(state.traffic_sign_config, traffic_sign_detector_factory_);
-        ts::TrafficSignTemporalFilter traffic_sign_filter(state.traffic_sign_config);
 
-        bool paused = state.source->isStaticImage();
-        bool step_once = true;
-        bool need_reprocess = true;
-        bool window_created = false;
-        cv::Mat current_frame;
-        cv::Mat current_dashboard;
-        rsl::pipeline::RoadSegmentationResult current_result;
-        autoctrl::AutonomousControlSnapshot current_control_snapshot;
-        ts::TrafficSignFrameResult current_traffic_sign_result;
-        vision::VisionDebugViewSet last_requested_views;
-        auto last_telemetry_publish = std::chrono::steady_clock::time_point::min();
-        auto last_stream_publish = std::chrono::steady_clock::time_point::min();
+        async::LatestValueMailbox<TrafficSignJob> traffic_sign_mailbox;
+        async::LatestValueMailbox<std::shared_ptr<CoreFrameSnapshot>> stream_mailbox;
+        TelemetryTopicQueue telemetry_queue;
+        RuntimeMetrics runtime_metrics;
 
-        if (state.vision_config.debug_window_enabled) {
-            cv::namedWindow(window_name_, cv::WINDOW_AUTOSIZE);
-            window_created = true;
-        }
+        std::mutex traffic_sign_result_mutex;
+        ts::TrafficSignFrameResult latest_traffic_sign_result =
+            makeInitialTrafficSignResult(state.traffic_sign_config,
+                                         state.traffic_sign_config.enabled
+                                             ? ts::TrafficSignDetectorState::Idle
+                                             : ts::TrafficSignDetectorState::Disabled);
 
-        while (!stop_requested_.load()) {
-            const vision::VisionDebugViewSet requested_views =
-                vision_subscription_provider_ ? vision_subscription_provider_()
-                                              : vision::VisionDebugViewSet{};
-            const bool vision_requests_changed = requested_views != last_requested_views;
-            const bool should_read_static_image =
-                state.source->isStaticImage() && (need_reprocess || current_frame.empty());
-            const bool should_read_dynamic_frame =
-                !state.source->isStaticImage() && !need_reprocess &&
-                (!paused || step_once || current_frame.empty());
-            bool processed_frame = false;
+        std::atomic<bool> toggle_pause_requested{false};
+        std::atomic<bool> step_requested{false};
 
-            if (should_read_static_image || should_read_dynamic_frame) {
-                if (!state.source->read(current_frame) || current_frame.empty()) {
-                    std::cerr << "[RoadSegmentationService] Falha ao ler a fonte de video."
-                              << std::endl;
-                    break;
-                }
-            }
+        const bool stream_worker_enabled =
+            state.vision_config.debug_window_enabled || static_cast<bool>(vision_frame_publisher_);
+        const std::int64_t traffic_sign_max_age_ms = static_cast<std::int64_t>(std::llround(
+            (1000.0 / state.vision_config.traffic_sign_target_fps) * 2.0));
 
-            if (need_reprocess || should_read_static_image || should_read_dynamic_frame) {
-                processed_frame = true;
-                current_result = pipeline.process(current_frame);
-                const auto timestamp_ms = currentTimestampMs();
+        auto notifyWorkers = [&] {
+            traffic_sign_mailbox.notifyAll();
+            stream_mailbox.notifyAll();
+            telemetry_queue.notifyAll();
+        };
 
-                if (control_service_) {
-                    current_control_snapshot = control_service_->process(current_result, timestamp_ms);
-                    if (control_sink_) {
-                        control_sink_(current_control_snapshot);
-                    }
-                } else {
-                    current_control_snapshot.timestamp_ms = timestamp_ms;
-                }
+        auto requestStop = [&] {
+            stop_requested_.store(true);
+            notifyWorkers();
+        };
 
-                const ts::TrafficSignRoi traffic_sign_roi = ts::buildTrafficSignRoi(
-                    current_frame.size(), state.traffic_sign_config.roi_right_width_ratio,
-                    state.traffic_sign_config.roi_top_ratio,
-                    state.traffic_sign_config.roi_bottom_ratio);
-                if (!state.traffic_sign_config.enabled) {
-                    current_traffic_sign_result = ts::makeTrafficSignFrameResult(
-                        ts::TrafficSignDetectorState::Disabled, traffic_sign_roi, timestamp_ms);
-                } else if (!traffic_sign_detector) {
-                    current_traffic_sign_result = ts::makeTrafficSignFrameResult(
-                        ts::TrafficSignDetectorState::Error, traffic_sign_roi, timestamp_ms,
-                        "Falha ao criar o detector de sinalizacao.");
-                    traffic_sign_filter.reset();
-                } else {
-                    current_traffic_sign_result =
-                        traffic_sign_detector->detect(current_frame, timestamp_ms);
-                    current_traffic_sign_result =
-                        traffic_sign_filter.update(std::move(current_traffic_sign_result));
-                }
+        auto readTrafficSignResult = [&] {
+            std::lock_guard<std::mutex> lock(traffic_sign_result_mutex);
+            return latest_traffic_sign_result;
+        };
 
-                if (state.vision_config.debug_window_enabled) {
-                    current_dashboard = vision_renderer.render(
-                        vision::VisionDebugViewId::Dashboard, current_result,
-                        state.segmentation_config, state.source_label,
-                        pipeline.calibrationStatus(), current_control_snapshot,
-                        current_traffic_sign_result);
-                } else {
-                    current_dashboard.release();
-                }
+        auto writeTrafficSignResult = [&](ts::TrafficSignFrameResult result) {
+            std::lock_guard<std::mutex> lock(traffic_sign_result_mutex);
+            latest_traffic_sign_result = std::move(result);
+        };
 
-                if (telemetry_publisher_) {
-                    const auto now = std::chrono::steady_clock::now();
-                    if (shouldPublishNow(state.vision_config.telemetry_max_fps, now,
-                                         last_telemetry_publish)) {
-                        telemetry_publisher_(rs::buildRoadSegmentationTelemetryJson(
-                            current_result, state.source_label, timestamp_ms));
-                        telemetry_publisher_(ts::buildTrafficSignTelemetryJson(
-                            current_traffic_sign_result, state.source_label));
-                        if (control_service_) {
-                            telemetry_publisher_(autoctrl::buildAutonomousControlTelemetryJson(
-                                current_control_snapshot));
+        std::thread telemetry_thread;
+        if (telemetry_publisher_) {
+            telemetry_thread = std::thread([&, source_label = state.source_label,
+                                            telemetry_max_fps = state.vision_config.telemetry_max_fps] {
+                try {
+                    auto last_runtime_publish = std::chrono::steady_clock::time_point::min();
+
+                    while (!stop_requested_.load()) {
+                        for (auto &payload : telemetry_queue.waitPopAllFor(
+                                 std::chrono::milliseconds(50),
+                                 [&] { return stop_requested_.load(); })) {
+                            telemetry_publisher_(payload);
+                        }
+
+                        const auto now = std::chrono::steady_clock::now();
+                        if (shouldPublishNow(telemetry_max_fps, now, last_runtime_publish)) {
+                            const auto runtime_timestamp_ms = currentTimestampMs();
+                            const auto runtime_telemetry = captureVisionRuntimeTelemetry(
+                                runtime_metrics, source_label, runtime_timestamp_ms,
+                                readTrafficSignResult(), traffic_sign_mailbox.droppedCount(),
+                                stream_mailbox.droppedCount());
+                            telemetry_publisher_(
+                                vision::buildVisionRuntimeTelemetryJson(runtime_telemetry));
                         }
                     }
+
+                    for (auto &payload : telemetry_queue.drain()) {
+                        telemetry_publisher_(payload);
+                    }
+                } catch (const std::exception &ex) {
+                    std::cerr << "[RoadSegmentationService/telemetry] Excecao: " << ex.what()
+                              << std::endl;
+                    requestStop();
+                }
+            });
+        }
+
+        std::thread traffic_sign_thread([&, detector = std::move(traffic_sign_detector),
+                                         source_label = state.source_label]() mutable {
+            try {
+                if (!state.traffic_sign_config.enabled) {
+                    const auto disabled_result = makeInitialTrafficSignResult(
+                        state.traffic_sign_config, ts::TrafficSignDetectorState::Disabled);
+                    writeTrafficSignResult(disabled_result);
+                    telemetry_queue.publish("telemetry.traffic_sign_detection",
+                                            ts::buildTrafficSignTelemetryJson(disabled_result,
+                                                                              source_label));
+                    while (!stop_requested_.load()) {
+                        traffic_sign_mailbox.waitPopFor(std::chrono::milliseconds(100),
+                                                        [&] { return stop_requested_.load(); });
+                    }
+                    return;
                 }
 
-                step_once = false;
-                need_reprocess = false;
+                if (!detector) {
+                    const auto error_result = makeInitialTrafficSignResult(
+                        state.traffic_sign_config, ts::TrafficSignDetectorState::Error,
+                        "Falha ao criar o detector de sinalizacao.");
+                    writeTrafficSignResult(error_result);
+                    telemetry_queue.publish("telemetry.traffic_sign_detection",
+                                            ts::buildTrafficSignTelemetryJson(error_result,
+                                                                              source_label));
+                    while (!stop_requested_.load()) {
+                        traffic_sign_mailbox.waitPopFor(std::chrono::milliseconds(100),
+                                                        [&] { return stop_requested_.load(); });
+                    }
+                    return;
+                }
+
+                ts::TrafficSignTemporalFilter filter(state.traffic_sign_config);
+                RateTracker rate_tracker;
+
+                while (!stop_requested_.load()) {
+                    auto job = traffic_sign_mailbox.waitPopFor(std::chrono::milliseconds(100),
+                                                               [&] {
+                                                                   return stop_requested_.load();
+                                                               });
+                    if (!job.has_value()) {
+                        continue;
+                    }
+
+                    const auto inference_started = std::chrono::steady_clock::now();
+                    ts::TrafficSignFrameResult frame_result =
+                        detector->detect(job->input, job->timestamp_ms);
+                    frame_result = filter.update(std::move(frame_result));
+                    const auto inference_finished = std::chrono::steady_clock::now();
+
+                    const double inference_ms = std::chrono::duration<double, std::milli>(
+                                                    inference_finished - inference_started)
+                                                    .count();
+                    runtime_metrics.traffic_sign_inference_ms.store(inference_ms,
+                                                                    std::memory_order_relaxed);
+                    runtime_metrics.traffic_sign_fps.store(rate_tracker.mark(inference_finished),
+                                                           std::memory_order_relaxed);
+
+                    writeTrafficSignResult(frame_result);
+                    telemetry_queue.publish("telemetry.traffic_sign_detection",
+                                            ts::buildTrafficSignTelemetryJson(frame_result,
+                                                                              source_label));
+                }
+            } catch (const std::exception &ex) {
+                std::cerr << "[RoadSegmentationService/traffic_sign] Excecao: " << ex.what()
+                          << std::endl;
+                requestStop();
             }
+        });
 
-            if (vision_frame_publisher_ && !requested_views.empty() &&
-                !current_result.resized_frame.empty()) {
-                const auto now = std::chrono::steady_clock::now();
-                bool should_publish_stream = false;
+        std::thread stream_thread;
+        if (stream_worker_enabled) {
+            stream_thread = std::thread([&, source_label = state.source_label,
+                                         segmentation_config = state.segmentation_config,
+                                         debug_window_enabled =
+                                             state.vision_config.debug_window_enabled,
+                                         stream_max_fps = state.vision_config.stream_max_fps,
+                                         stream_jpeg_quality =
+                                             state.vision_config.stream_jpeg_quality] {
+                try {
+                    vision::VisionDebugViewRenderer vision_renderer;
+                    vision::VisionDebugViewSet last_requested_views;
+                    auto last_stream_publish = std::chrono::steady_clock::time_point::min();
+                    std::shared_ptr<CoreFrameSnapshot> latest_snapshot;
+                    bool window_created = false;
+                    cv::Mat current_dashboard;
+                    RateTracker rate_tracker;
 
-                if (vision_requests_changed) {
-                    should_publish_stream = true;
-                    last_stream_publish = now;
-                } else if (processed_frame &&
-                           shouldPublishNow(state.vision_config.stream_max_fps, now,
-                                            last_stream_publish)) {
-                    should_publish_stream = true;
+                    auto requestedViews = [&] {
+                        return vision_subscription_provider_ ? vision_subscription_provider_()
+                                                             : vision::VisionDebugViewSet{};
+                    };
+
+                    while (!stop_requested_.load()) {
+                        auto snapshot = stream_mailbox.waitPopFor(
+                            std::chrono::milliseconds(debug_window_enabled ? 30 : 100),
+                            [&] { return stop_requested_.load(); });
+                        const bool received_snapshot = snapshot.has_value();
+                        if (received_snapshot) {
+                            latest_snapshot = std::move(*snapshot);
+                        }
+
+                        const auto requested_views = requestedViews();
+                        const bool vision_requests_changed = requested_views != last_requested_views;
+                        last_requested_views = requested_views;
+
+                        if (!latest_snapshot) {
+                            if (debug_window_enabled) {
+                                if (!window_created) {
+                                    cv::namedWindow(window_name_, cv::WINDOW_AUTOSIZE);
+                                    window_created = true;
+                                }
+                                const int key = cv::waitKey(1);
+                                if (key == 27 || key == 'q' || key == 'Q') {
+                                    requestStop();
+                                }
+                            }
+                            continue;
+                        }
+
+                        const auto latest_sign_result = readTrafficSignResult();
+                        const auto renderable_sign_result = ts::buildRenderableTrafficSignResult(
+                            latest_sign_result, latest_snapshot->timestamp_ms,
+                            traffic_sign_max_age_ms);
+                        const auto runtime_telemetry = captureVisionRuntimeTelemetry(
+                            runtime_metrics, source_label, latest_snapshot->timestamp_ms,
+                            latest_sign_result, traffic_sign_mailbox.droppedCount(),
+                            stream_mailbox.droppedCount());
+
+                        bool should_publish_stream = false;
+                        if (vision_frame_publisher_ && !requested_views.empty()) {
+                            const auto now = std::chrono::steady_clock::now();
+                            if (vision_requests_changed) {
+                                should_publish_stream = true;
+                                last_stream_publish = now;
+                            } else if (received_snapshot &&
+                                       shouldPublishNow(stream_max_fps, now,
+                                                        last_stream_publish)) {
+                                should_publish_stream = true;
+                            }
+                        }
+
+                        const bool should_update_dashboard = debug_window_enabled && received_snapshot;
+                        if (!should_publish_stream && !should_update_dashboard) {
+                            if (debug_window_enabled) {
+                                if (!window_created) {
+                                    cv::namedWindow(window_name_, cv::WINDOW_AUTOSIZE);
+                                    window_created = true;
+                                }
+                                if (!current_dashboard.empty()) {
+                                    cv::imshow(window_name_, current_dashboard);
+                                }
+
+                                const int key = cv::waitKey(1);
+                                switch (key) {
+                                case 27:
+                                case 'q':
+                                case 'Q':
+                                    requestStop();
+                                    break;
+                                case 'p':
+                                case 'P':
+                                    toggle_pause_requested.store(true);
+                                    break;
+                                case 'n':
+                                case 'N':
+                                    step_requested.store(true);
+                                    break;
+                                default:
+                                    break;
+                                }
+                            }
+                            continue;
+                        }
+
+                        std::unordered_map<vision::VisionDebugViewId, cv::Mat,
+                                           vision::VisionDebugViewIdHash>
+                            rendered_views;
+                        auto renderView = [&](vision::VisionDebugViewId view) -> const cv::Mat & {
+                            auto [it, inserted] =
+                                rendered_views.try_emplace(view, cv::Mat{});
+                            if (inserted || it->second.empty()) {
+                                it->second = vision_renderer.render(
+                                    view, latest_snapshot->segmentation_result,
+                                    segmentation_config, source_label,
+                                    latest_snapshot->calibration_status,
+                                    latest_snapshot->control_snapshot, runtime_telemetry,
+                                    renderable_sign_result);
+                            }
+                            return it->second;
+                        };
+
+                        double encode_ms = 0.0;
+                        if (should_publish_stream) {
+                            const auto encode_started = std::chrono::steady_clock::now();
+                            for (const auto view : vision::allVisionDebugViews()) {
+                                if (requested_views.find(view) == requested_views.end()) {
+                                    continue;
+                                }
+
+                                const cv::Mat &frame = renderView(view);
+                                const auto payload = vision::buildVisionFrameJson(
+                                    view, frame, latest_snapshot->timestamp_ms, stream_jpeg_quality);
+                                if (payload) {
+                                    vision_frame_publisher_(view, *payload);
+                                }
+                            }
+                            encode_ms = std::chrono::duration<double, std::milli>(
+                                            std::chrono::steady_clock::now() - encode_started)
+                                            .count();
+                            runtime_metrics.stream_encode_ms.store(encode_ms,
+                                                                   std::memory_order_relaxed);
+                            runtime_metrics.stream_fps.store(
+                                rate_tracker.mark(std::chrono::steady_clock::now()),
+                                std::memory_order_relaxed);
+                        }
+
+                        if (debug_window_enabled) {
+                            if (!window_created) {
+                                cv::namedWindow(window_name_, cv::WINDOW_AUTOSIZE);
+                                window_created = true;
+                            }
+
+                            current_dashboard = renderView(vision::VisionDebugViewId::Dashboard).clone();
+                            if (!current_dashboard.empty()) {
+                                cv::imshow(window_name_, current_dashboard);
+                            }
+
+                            const int key = cv::waitKey(1);
+                            switch (key) {
+                            case 27:
+                            case 'q':
+                            case 'Q':
+                                requestStop();
+                                break;
+                            case 'p':
+                            case 'P':
+                                toggle_pause_requested.store(true);
+                                break;
+                            case 'n':
+                            case 'N':
+                                step_requested.store(true);
+                                break;
+                            default:
+                                break;
+                            }
+                        } else if (encode_ms <= 0.0 && received_snapshot) {
+                            runtime_metrics.stream_encode_ms.store(0.0, std::memory_order_relaxed);
+                        }
+                    }
+
+                    if (window_created) {
+                        destroyWindow();
+                    }
+                } catch (const std::exception &ex) {
+                    std::cerr << "[RoadSegmentationService/stream] Excecao: " << ex.what()
+                              << std::endl;
+                    requestStop();
                 }
+            });
+        }
 
-                if (should_publish_stream) {
-                    const auto stream_timestamp_ms =
-                        current_control_snapshot.timestamp_ms > 0
-                            ? current_control_snapshot.timestamp_ms
-                            : currentTimestampMs();
-                    publishVisionFrames(requested_views, state.vision_config, vision_renderer,
-                                        current_result, state.segmentation_config,
-                                        state.source_label, pipeline.calibrationStatus(),
-                                        current_control_snapshot, current_traffic_sign_result,
-                                        stream_timestamp_ms,
-                                        vision_frame_publisher_);
-                }
-            }
+        std::thread core_thread([&, source_label = state.source_label] {
+            try {
+                rsl::pipeline::RoadSegmentationPipeline pipeline(state.segmentation_config);
+                cv::Mat current_frame;
+                bool paused = state.source->isStaticImage();
+                bool step_once = true;
+                bool need_reprocess = true;
+                auto next_traffic_sign_enqueue = std::chrono::steady_clock::time_point::min();
+                auto last_telemetry_enqueue = std::chrono::steady_clock::time_point::min();
+                RateTracker rate_tracker;
 
-            last_requested_views = requested_views;
-
-            if (state.vision_config.debug_window_enabled) {
-                if (!window_created) {
-                    cv::namedWindow(window_name_, cv::WINDOW_AUTOSIZE);
-                    window_created = true;
-                }
-
-                if (!current_dashboard.empty()) {
-                    cv::imshow(window_name_, current_dashboard);
-                }
-
-                const int key = cv::waitKey(state.source->isStaticImage() ? 30 : 10);
-                switch (key) {
-                case 27:
-                case 'q':
-                case 'Q':
-                    stop_requested_.store(true);
-                    break;
-                case 'p':
-                case 'P':
-                    if (!state.source->isStaticImage()) {
+                while (!stop_requested_.load()) {
+                    if (toggle_pause_requested.exchange(false) && !state.source->isStaticImage()) {
                         paused = !paused;
                     }
-                    break;
-                case 'n':
-                case 'N':
-                    if (!state.source->isStaticImage() && paused) {
+                    if (step_requested.exchange(false) && !state.source->isStaticImage() && paused) {
                         step_once = true;
                     }
-                    break;
-                case 'r':
-                case 'R': {
-                    RuntimeState reloaded_state;
-                    if (loadRuntimeState(vision_config_path_, reloaded_state)) {
-                        state = std::move(reloaded_state);
-                        pipeline.updateConfig(state.segmentation_config);
-                        traffic_sign_detector = createTrafficSignDetector(
-                            state.traffic_sign_config, traffic_sign_detector_factory_);
-                        traffic_sign_filter = ts::TrafficSignTemporalFilter(state.traffic_sign_config);
-                        current_traffic_sign_result = ts::TrafficSignFrameResult{};
-                        paused = state.source->isStaticImage();
-                        step_once = true;
-                        need_reprocess = true;
-                        current_frame.release();
-                        current_dashboard.release();
-                        last_telemetry_publish = std::chrono::steady_clock::time_point::min();
-                        last_stream_publish = std::chrono::steady_clock::time_point::min();
 
-                        if (!state.vision_config.debug_window_enabled && window_created) {
-                            destroyWindow();
-                            window_created = false;
+                    const bool should_read_static_image =
+                        state.source->isStaticImage() && (need_reprocess || current_frame.empty());
+                    const bool should_read_dynamic_frame =
+                        !state.source->isStaticImage() && !need_reprocess &&
+                        (!paused || step_once || current_frame.empty());
+                    bool processed_frame = false;
+
+                    if (should_read_static_image || should_read_dynamic_frame) {
+                        if (!state.source->read(current_frame) || current_frame.empty()) {
+                            std::cerr << "[RoadSegmentationService] Falha ao ler a fonte de video."
+                                      << std::endl;
+                            requestStop();
+                            break;
                         }
                     }
-                    break;
-                }
-                default:
-                    break;
-                }
-            } else {
-                if (window_created) {
-                    destroyWindow();
-                    window_created = false;
-                }
 
-                if (state.source->isStaticImage()) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                    if (need_reprocess || should_read_static_image || should_read_dynamic_frame) {
+                        processed_frame = true;
+                        const auto processing_started = std::chrono::steady_clock::now();
+                        rsl::pipeline::RoadSegmentationResult segmentation_result =
+                            pipeline.process(current_frame);
+                        const auto timestamp_ms = currentTimestampMs();
+
+                        autoctrl::AutonomousControlSnapshot control_snapshot;
+                        if (control_service_) {
+                            control_snapshot = control_service_->process(segmentation_result, timestamp_ms);
+                            if (control_sink_) {
+                                control_sink_(control_snapshot);
+                            }
+                        } else {
+                            control_snapshot.timestamp_ms = timestamp_ms;
+                        }
+
+                        auto snapshot = std::make_shared<CoreFrameSnapshot>();
+                        snapshot->segmentation_result = std::move(segmentation_result);
+                        snapshot->control_snapshot = control_snapshot;
+                        snapshot->timestamp_ms = timestamp_ms;
+                        snapshot->calibration_status = pipeline.calibrationStatus();
+
+                        runtime_metrics.core_fps.store(rate_tracker.mark(std::chrono::steady_clock::now()),
+                                                       std::memory_order_relaxed);
+
+                        if (stream_worker_enabled) {
+                            stream_mailbox.offer(snapshot);
+                        }
+
+                        if (state.traffic_sign_config.enabled) {
+                            const auto now = std::chrono::steady_clock::now();
+                            if (next_traffic_sign_enqueue ==
+                                    std::chrono::steady_clock::time_point::min() ||
+                                now >= next_traffic_sign_enqueue) {
+                                const ts::TrafficSignRoi roi = ts::buildTrafficSignRoi(
+                                    current_frame.size(),
+                                    state.traffic_sign_config.roi_right_width_ratio,
+                                    state.traffic_sign_config.roi_top_ratio,
+                                    state.traffic_sign_config.roi_bottom_ratio);
+                                if (roi.frame_rect.area() > 0) {
+                                    TrafficSignJob job;
+                                    job.timestamp_ms = timestamp_ms;
+                                    job.input.frame = current_frame(roi.frame_rect).clone();
+                                    job.input.full_frame_size = current_frame.size();
+                                    job.input.roi = roi;
+                                    traffic_sign_mailbox.offer(std::move(job));
+                                    next_traffic_sign_enqueue =
+                                        now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                                  std::chrono::duration<double>(
+                                                      1.0 / state.vision_config.traffic_sign_target_fps));
+                                }
+                            }
+                        }
+
+                        const auto now = std::chrono::steady_clock::now();
+                        if (telemetry_publisher_ &&
+                            shouldPublishNow(state.vision_config.telemetry_max_fps, now,
+                                             last_telemetry_enqueue)) {
+                            telemetry_queue.publish(
+                                "telemetry.road_segmentation",
+                                rs::buildRoadSegmentationTelemetryJson(
+                                    snapshot->segmentation_result, source_label, timestamp_ms));
+                            if (control_service_) {
+                                telemetry_queue.publish(
+                                    "telemetry.autonomous_control",
+                                    autoctrl::buildAutonomousControlTelemetryJson(control_snapshot));
+                            }
+                        }
+
+                        (void)processing_started;
+                        step_once = false;
+                        need_reprocess = false;
+                    }
+
+                    if (state.source->isStaticImage()) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                    } else if (!processed_frame && paused) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
                 }
+            } catch (const std::exception &ex) {
+                std::cerr << "[RoadSegmentationService/core] Excecao: " << ex.what()
+                          << std::endl;
+                requestStop();
             }
+        });
+
+        if (core_thread.joinable()) {
+            core_thread.join();
         }
 
-        if (window_created) {
-            destroyWindow();
+        requestStop();
+
+        if (traffic_sign_thread.joinable()) {
+            traffic_sign_thread.join();
         }
+        if (stream_thread.joinable()) {
+            stream_thread.join();
+        }
+        if (telemetry_thread.joinable()) {
+            telemetry_thread.join();
+        }
+
+        destroyWindow();
         if (control_service_) {
             control_service_->stopAutonomous(autoctrl::StopReason::ServiceStop);
             if (control_sink_) {
@@ -474,7 +853,11 @@ void RoadSegmentationService::run() {
 
 void RoadSegmentationService::destroyWindow() const {
     if (!window_name_.empty()) {
-        cv::destroyWindow(window_name_);
+        try {
+            cv::destroyWindow(window_name_);
+        } catch (const cv::Exception &) {
+            // Ambiente sem janela criada: nada para destruir.
+        }
     }
 }
 
