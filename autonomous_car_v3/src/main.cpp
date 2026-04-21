@@ -214,7 +214,11 @@ int main() {
 
     std::cout << "Autonomous Car v3 iniciado em ws://0.0.0.0:8080" << std::endl;
     std::cout << "Canais: command:<origem>:<acao>, config:<chave>=<valor>, "
-                 "client:control/client:telemetry, signal:detected=<signal_id>"
+                 "client:control/client:telemetry, stream:subscribe=<views>, "
+                 "signal:detected=<signal_id>, telemetry.traffic_sign_detection"
+              << std::endl;
+    std::cout << "Deteccao de placas: relay externo via WebSocket; nenhuma inferencia roda "
+                 "localmente no Raspberry."
               << std::endl;
     std::cout << "Modo autonomo: command:autonomous:start | command:autonomous:stop"
               << std::endl;

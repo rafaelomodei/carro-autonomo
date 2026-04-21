@@ -23,6 +23,16 @@ std::string toLower(std::string value) {
     return value;
 }
 
+bool isTrafficSignTelemetryJson(std::string_view payload) {
+    const auto type_key = payload.find("\"type\"");
+    if (type_key == std::string_view::npos) {
+        return false;
+    }
+
+    return payload.find("\"telemetry.traffic_sign_detection\"", type_key) !=
+           std::string_view::npos;
+}
+
 } // namespace
 
 namespace autonomous_car::services::websocket {
@@ -31,6 +41,14 @@ std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
     auto trimmed = trim(payload);
     if (trimmed.empty()) {
         return std::nullopt;
+    }
+
+    if (!trimmed.empty() && trimmed.front() == '{' && isTrafficSignTelemetryJson(trimmed)) {
+        ParsedMessage parsed;
+        parsed.channel = MessageChannel::Telemetry;
+        parsed.key = "telemetry.traffic_sign_detection";
+        parsed.value = trimmed;
+        return parsed;
     }
 
     auto delimiter_pos = trimmed.find(':');

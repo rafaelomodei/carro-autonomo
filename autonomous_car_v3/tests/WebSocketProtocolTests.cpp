@@ -27,9 +27,24 @@ void testInvalidSignalMessageIsRejected() {
     expect(!parsed.has_value(), "Mensagens signal sem payload devem ser rejeitadas.");
 }
 
+void testTrafficSignTelemetryJsonIsAcceptedForRelay() {
+    const auto parsed = parseInboundMessage(
+        R"({"type":"telemetry.traffic_sign_detection","timestamp_ms":1,"source":"ws","detector_state":"confirmed","roi":{"left_ratio":0.55,"right_ratio":1.0,"right_width_ratio":0.45,"top_ratio":0.08,"bottom_ratio":0.72},"raw_detections":[],"candidate":null,"active_detection":null,"last_error":""})");
+
+    expect(parsed.has_value(), "JSON de telemetria externa deve ser aceito.");
+    expect(parsed->channel == MessageChannel::Telemetry,
+           "Telemetria externa deve cair no canal dedicado de relay.");
+    expect(parsed->value.has_value(), "Payload bruto deve ser preservado.");
+    expect(!messageRequiresControllerRole(parsed->channel),
+           "Relay de telemetria nao deve exigir papel control.");
+}
+
 TestRegistrar websocket_signal_parse_test("websocket_protocol_parses_signal_detected_messages",
                                           testSignalMessagesParseWithoutControlRole);
 TestRegistrar websocket_signal_invalid_test("websocket_protocol_rejects_empty_signal_payload",
                                             testInvalidSignalMessageIsRejected);
+TestRegistrar websocket_telemetry_relay_test(
+    "websocket_protocol_accepts_external_traffic_sign_telemetry_json",
+    testTrafficSignTelemetryJsonIsAcceptedForRelay);
 
 } // namespace

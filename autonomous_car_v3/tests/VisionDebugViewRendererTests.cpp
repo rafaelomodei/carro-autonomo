@@ -1,13 +1,9 @@
-#include <string>
-
 #include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
 
 #include "TestRegistry.hpp"
 #include "config/LabConfig.hpp"
 #include "pipeline/RoadSegmentationResult.hpp"
 #include "services/autonomous_control/AutonomousControlTypes.hpp"
-#include "services/traffic_sign_detection/TrafficSignTypes.hpp"
 #include "services/vision/VisionDebugViewRenderer.hpp"
 #include "services/vision/VisionRuntimeTelemetry.hpp"
 
@@ -16,7 +12,6 @@ namespace {
 using autonomous_car::tests::TestRegistrar;
 using autonomous_car::tests::expect;
 namespace autoctrl = autonomous_car::services::autonomous_control;
-namespace ts = autonomous_car::services::traffic_sign_detection;
 namespace vision = autonomous_car::services::vision;
 namespace rsl = road_segmentation_lab;
 
@@ -41,165 +36,57 @@ rsl::pipeline::RoadSegmentationResult makeSegmentationResult() {
     return result;
 }
 
-ts::TrafficSignFrameResult makeTrafficSignResult(bool debug_roi_enabled = true,
-                                                 cv::Size source_frame_size = {320, 240}) {
-    ts::TrafficSignFrameResult result = ts::makeTrafficSignFrameResult(
-        ts::TrafficSignDetectorState::Confirmed,
-        ts::buildTrafficSignRoi(source_frame_size, 0.55, 1.0, 0.08, 0.72,
-                                debug_roi_enabled),
-        123456);
-
-    ts::TrafficSignDetection detection;
-    detection.sign_id = ts::TrafficSignId::Stop;
-    detection.model_label = "Parada Obrigatoria sign";
-    detection.display_label = "Parada obrigatoria";
-    detection.confidence_score = 0.94;
-    detection.bbox_frame = {220, 50, 50, 50};
-    detection.bbox_roi = {76, 31, 50, 50};
-    detection.consecutive_frames = 3;
-    detection.required_frames = 2;
-    detection.confirmed_at_ms = 123450;
-    detection.last_seen_at_ms = 123456;
-    result.raw_detections.push_back(detection);
-    result.active_detection = detection;
-    return result;
-}
-
-ts::TrafficSignFrameResult makeTrafficSignRoiOnlyResult(
-    bool debug_roi_enabled = true, cv::Size source_frame_size = {320, 240}) {
-    return ts::makeTrafficSignFrameResult(
-        ts::TrafficSignDetectorState::Idle,
-        ts::buildTrafficSignRoi(source_frame_size, 0.55, 1.0, 0.08, 0.72,
-                                debug_roi_enabled),
-        123456);
-}
-
-void testAnnotatedViewReceivesTrafficSignOverlay() {
+void testAnnotatedViewRendersWithoutTrafficSignOverlay() {
     vision::VisionDebugViewRenderer renderer;
     const auto segmentation_result = makeSegmentationResult();
     rsl::config::LabConfig config;
     autoctrl::AutonomousControlSnapshot snapshot;
     vision::VisionRuntimeTelemetry runtime_telemetry;
 
-    const cv::Mat without_overlay = renderer.render(
+    const cv::Mat annotated = renderer.render(
         vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry, ts::TrafficSignFrameResult{});
-    const cv::Mat with_overlay = renderer.render(
-        vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry, makeTrafficSignResult());
+        "calibrated", snapshot, runtime_telemetry);
 
-    cv::Mat diff;
-    cv::absdiff(without_overlay, with_overlay, diff);
-    const cv::Scalar diff_sum = cv::sum(diff);
-    const double total_diff = diff_sum[0] + diff_sum[1] + diff_sum[2];
-
-    expect(total_diff > 0.0,
-           "Overlay de sinalizacao deve alterar a annotated view.");
+    expect(!annotated.empty(), "Annotated view deve ser renderizada.");
+    expect(annotated.size() == segmentation_result.resized_frame.size(),
+           "Annotated view deve acompanhar o tamanho do frame principal.");
 }
 
-void testAnnotatedViewCanHideOnlyTrafficSignRoiOutline() {
+void testDashboardRendersWithAutonomousControlPanel() {
     vision::VisionDebugViewRenderer renderer;
     const auto segmentation_result = makeSegmentationResult();
     rsl::config::LabConfig config;
     autoctrl::AutonomousControlSnapshot snapshot;
+    snapshot.driving_mode = autonomous_car::DrivingMode::Autonomous;
+    snapshot.autonomous_started = true;
+    snapshot.tracking_state = autoctrl::TrackingState::Tracking;
+    snapshot.motion_command = autoctrl::MotionCommand::Forward;
+    snapshot.lane_available = true;
+    snapshot.confidence_ok = true;
+    snapshot.confidence_score = 0.82;
+    snapshot.preview_error = 0.05;
+    snapshot.steering_command = 0.08;
+    snapshot.projected_path = {{0.0, 0.0}, {0.05, 0.3}, {0.08, 0.6}, {0.10, 1.0}};
+
     vision::VisionRuntimeTelemetry runtime_telemetry;
+    runtime_telemetry.core_fps = 20.0;
+    runtime_telemetry.stream_fps = 5.0;
+    runtime_telemetry.stream_encode_ms = 18.0;
 
-    const cv::Mat without_overlay = renderer.render(
-        vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry, ts::TrafficSignFrameResult{});
-    const cv::Mat detection_only = renderer.render(
-        vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry, makeTrafficSignResult(false));
-    const cv::Mat with_roi = renderer.render(
-        vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry, makeTrafficSignResult(true));
-
-    cv::Mat diff_detection_only;
-    cv::absdiff(without_overlay, detection_only, diff_detection_only);
-    const cv::Scalar detection_only_sum = cv::sum(diff_detection_only);
-    const double total_detection_only_diff =
-        detection_only_sum[0] + detection_only_sum[1] + detection_only_sum[2];
-
-    expect(total_detection_only_diff > 0.0,
-           "Boxes de deteccao devem continuar visiveis sem o contorno da ROI.");
-    expect(detection_only.at<cv::Vec3b>(75, 220) == with_roi.at<cv::Vec3b>(75, 220),
-           "Desligar a ROI nao deve alterar o box da deteccao.");
-    expect(detection_only.at<cv::Vec3b>(19, 176) != with_roi.at<cv::Vec3b>(19, 176),
-           "Contorno da ROI deve desaparecer quando a flag estiver desligada.");
-}
-
-void testAnnotatedViewScalesTrafficSignOverlayToRenderedFrame() {
-    vision::VisionDebugViewRenderer renderer;
-    auto segmentation_result = makeSegmentationResult();
-    segmentation_result.resized_frame = cv::Mat(480, 640, CV_8UC3, cv::Scalar{40, 40, 40});
-    rsl::config::LabConfig config;
-    autoctrl::AutonomousControlSnapshot snapshot;
-    vision::VisionRuntimeTelemetry runtime_telemetry;
-
-    const cv::Mat without_overlay = renderer.render(
-        vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry, ts::TrafficSignFrameResult{});
-    const cv::Mat with_roi_only = renderer.render(
-        vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry,
-        makeTrafficSignRoiOnlyResult(true, {320, 240}));
-    const cv::Mat with_overlay = renderer.render(
-        vision::VisionDebugViewId::Annotated, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry,
-        makeTrafficSignResult(true, {320, 240}));
-
-    cv::Mat box_diff;
-    cv::absdiff(with_roi_only, with_overlay, box_diff);
-    const cv::Scalar box_probe_sum = cv::sum(box_diff(cv::Rect(438, 98, 8, 8)));
-
-    expect(box_probe_sum[0] + box_probe_sum[1] + box_probe_sum[2] > 0.0,
-           "Boxes de deteccao devem acompanhar a escala da annotated view.");
-}
-
-void testDashboardReceivesTrafficSignStatus() {
-    vision::VisionDebugViewRenderer renderer;
-    const auto segmentation_result = makeSegmentationResult();
-    rsl::config::LabConfig config;
-    autoctrl::AutonomousControlSnapshot snapshot;
-    vision::VisionRuntimeTelemetry runtime_telemetry;
-
-    const cv::Mat dashboard_without_overlay = renderer.render(
-        vision::VisionDebugViewId::Dashboard, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry, ts::TrafficSignFrameResult{});
-    const cv::Mat dashboard_with_roi_only = renderer.render(
-        vision::VisionDebugViewId::Dashboard, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry,
-        makeTrafficSignRoiOnlyResult(true));
     const cv::Mat dashboard = renderer.render(
         vision::VisionDebugViewId::Dashboard, segmentation_result, config, "camera",
-        "calibrated", snapshot, runtime_telemetry, makeTrafficSignResult());
+        "calibrated", snapshot, runtime_telemetry);
 
     expect(!dashboard.empty(), "Dashboard deve ser renderizado com sucesso.");
-    cv::Mat roi_diff;
-    cv::absdiff(dashboard_without_overlay, dashboard_with_roi_only, roi_diff);
-    const int tile_width = segmentation_result.resized_frame.cols;
-    const int tile_height = segmentation_result.resized_frame.rows;
-    const int tile_card_width = tile_width + 250;
-    const cv::Scalar original_roi_sum =
-        cv::sum(roi_diff(cv::Rect(0, 0, tile_width, tile_height)));
-    const cv::Scalar annotated_roi_sum = cv::sum(
-        roi_diff(cv::Rect(tile_card_width, tile_height, tile_width, tile_height)));
-
-    expect(original_roi_sum[0] + original_roi_sum[1] + original_roi_sum[2] > 0.0,
-           "Dashboard local deve desenhar a ROI de sinalizacao no tile original.");
-    expect(annotated_roi_sum[0] + annotated_roi_sum[1] + annotated_roi_sum[2] > 0.0,
-           "Dashboard local deve desenhar a ROI de sinalizacao no tile anotado.");
+    expect(dashboard.cols > segmentation_result.resized_frame.cols,
+           "Dashboard deve anexar o painel lateral de controle.");
 }
 
-TestRegistrar vision_annotated_overlay_test("vision_debug_view_renderer_annotated_overlay",
-                                            testAnnotatedViewReceivesTrafficSignOverlay);
-TestRegistrar vision_annotated_roi_toggle_test(
-    "vision_debug_view_renderer_hides_only_traffic_sign_roi_outline",
-    testAnnotatedViewCanHideOnlyTrafficSignRoiOutline);
-TestRegistrar vision_annotated_resize_test(
-    "vision_debug_view_renderer_scales_traffic_sign_overlay_to_rendered_frame",
-    testAnnotatedViewScalesTrafficSignOverlayToRenderedFrame);
-TestRegistrar vision_dashboard_overlay_test("vision_debug_view_renderer_dashboard_overlay",
-                                            testDashboardReceivesTrafficSignStatus);
+TestRegistrar vision_annotated_test(
+    "vision_debug_view_renderer_renders_annotated_view_without_local_traffic_sign_overlay",
+    testAnnotatedViewRendersWithoutTrafficSignOverlay);
+TestRegistrar vision_dashboard_test(
+    "vision_debug_view_renderer_renders_dashboard_with_control_panel",
+    testDashboardRendersWithAutonomousControlPanel);
 
 } // namespace

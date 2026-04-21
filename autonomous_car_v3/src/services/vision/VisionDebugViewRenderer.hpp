@@ -8,7 +8,6 @@
 #include "pipeline/RoadSegmentationResult.hpp"
 #include "services/autonomous_control/AutonomousControlDebugRenderer.hpp"
 #include "services/autonomous_control/AutonomousControlTypes.hpp"
-#include "services/traffic_sign_detection/TrafficSignTypes.hpp"
 #include "services/vision/VisionDebugStream.hpp"
 #include "services/vision/VisionRuntimeTelemetry.hpp"
 #include "render/DebugRenderer.hpp"
@@ -24,9 +23,7 @@ public:
                    const std::string &calibration_status,
                    const autonomous_car::services::autonomous_control::AutonomousControlSnapshot
                        &snapshot,
-                   const VisionRuntimeTelemetry &runtime_telemetry,
-                   const autonomous_car::services::traffic_sign_detection::TrafficSignFrameResult
-                       &traffic_sign_result) const;
+                   const VisionRuntimeTelemetry &runtime_telemetry) const;
 
 private:
     road_segmentation_lab::render::DebugRenderer segmentation_renderer_;

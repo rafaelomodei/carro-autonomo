@@ -103,6 +103,9 @@ int main() {
     road_segmentation_service.start();
 
     std::cout << "autonomous_car_v3_vision_debug iniciado em ws://0.0.0.0:8080" << std::endl;
+    std::cout << "Deteccao de placas: relay externo via WebSocket; nenhuma inferencia roda "
+                 "localmente no Raspberry."
+              << std::endl;
     std::cout << "Comandos manuais de movimento nao estao ativos neste binario; "
                  "autonomous:start/stop atualiza apenas o debug e a telemetria."
               << std::endl;

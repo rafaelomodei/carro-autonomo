@@ -641,6 +641,16 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
             continue;
         }
 
+        if (parsed_message->channel == websocket::MessageChannel::Telemetry) {
+            if (!parsed_message->value || parsed_message->value->empty()) {
+                std::cerr << "Payload de telemetria externa vazio." << std::endl;
+                continue;
+            }
+
+            broadcastText(*parsed_message->value);
+            continue;
+        }
+
         if (parsed_message->channel == websocket::MessageChannel::Signal) {
             if (parsed_message->key != "detected" || !parsed_message->value ||
                 parsed_message->value->empty()) {

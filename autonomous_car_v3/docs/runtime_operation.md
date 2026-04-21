@@ -1,6 +1,6 @@
 # Operacao do `autonomous_car_v3`
 
-Este documento descreve como a aplicacao opera hoje no Raspberry Pi, tomando o `frontend` e outros clientes WebSocket como interfaces externas. O foco aqui e runtime, concorrencia, fluxo de dados, contratos publicos e comportamento operacional observado no codigo atual.
+Este documento descreve o runtime atual do `autonomous_car_v3` no Raspberry Pi, com foco em concorrencia, fluxo de dados e contratos WebSocket.
 
 Base de leitura principal:
 
@@ -10,516 +10,210 @@ Base de leitura principal:
 - `src/services/WebSocketServer.cpp`
 - `src/services/autonomous_control/AutonomousControlService.cpp`
 
-Fora de escopo:
+## Estado atual da arquitetura
 
-- versoes antigas `autonomous_car/` e `autonomous_car_v2/`
-- arquitetura interna do `frontend`
-- planejamento futuro de produto
+O Raspberry nao executa mais Edge Impulse nem qualquer pipeline local de deteccao de placas.
 
-## Evolucao recente
+Hoje o V3 faz cinco coisas:
 
-Os dois ultimos commits alteraram de forma relevante a forma como o sistema opera:
+1. captura e processa frames para segmentacao de estrada
+2. calcula o estado do controle autonomo
+3. publica stream de visao (`vision.frame`)
+4. publica telemetria local do carro
+5. recebe e repassa mensagens de placas vindas de um servico externo
 
-- `1cf3d1d` integrou a deteccao de placas ao servico de visao. A partir daqui o runtime passou a recortar ROI, rodar inferencia Edge Impulse/FOMO, aplicar filtro temporal e publicar `telemetry.traffic_sign_detection`, alem de exibir o resultado no overlay de debug.
-- `00909ec` adicionou `telemetry.vision_runtime`, introduziu `LatestValueMailbox` para placas e stream, organizou melhor o fan-out de telemetria/stream e deixou o desacoplamento entre `core`, placas e stream mais explicito. Na pratica, isso reduz o risco de um consumidor lento travar o pipeline principal.
+O servico externo de placas:
 
-## Visao geral operacional
+- assina `vision.frame` na view `raw`
+- roda a inferencia fora do Raspberry
+- devolve `signal:detected=<signal_id>`
+- devolve JSON `telemetry.traffic_sign_detection`
 
-O `autonomous_car_v3` roda como um processo C++ no Raspberry Pi com dois perfis de execucao:
+O V3 aceita essas mensagens e:
 
-- `autonomous_car_v3`: perfil de hardware completo, depende de `wiringPi`, registra comandos manuais e aplica comandos autonomos em motor e servo.
-- `autonomous_car_v3_vision_debug`: perfil de debug local, nao depende de `wiringPi`, mantem WebSocket, segmentacao, overlays e telemetria, mas nao atua fisicamente no veiculo.
+- registra `signal:detected` no `TrafficSignalRegistry`
+- redistribui o payload bruto `telemetry.traffic_sign_detection` para os clientes conectados
 
-Os dois perfis compartilham o mesmo nucleo de visao:
+## Perfis de execucao
 
-- `RoadSegmentationService` captura frame, roda segmentacao, alimenta o controle autonomo, dispara a pipeline de placas e faz fan-out de stream/debug.
-- `WebSocketServer` recebe comandos/configuracoes e distribui telemetrias/frames.
-- `AutonomousControlService` calcula o estado autonomo, o preview error, o PID e o estado de fail-safe.
+- `autonomous_car_v3`: perfil com `wiringPi`, GPIO e atuacao real em motor/servo
+- `autonomous_car_v3_vision_debug`: perfil sem `wiringPi`, usado para debug e telemetria
 
-```mermaid
-flowchart LR
-    cam["Camera do Raspberry"]
-    envs["Arquivos .env: autonomous_car.env, vision.env, road_segmentation.env, traffic_sign.env"]
-    clients["Frontend e outros clientes WebSocket"]
-    vehicle["Motor DC e servo"]
-
-    subgraph pi[Raspberry Pi]
-        app["Processo autonomous_car_v3"]
-        ws["WebSocketServer"]
-        vision["RoadSegmentationService"]
-        control["AutonomousControlService"]
-        hw["MotorController e SteeringController"]
-    end
-
-    envs --> app
-    cam --> vision
-    app --> ws
-    app --> vision
-    vision --> control
-    vision --> ws
-    control --> hw
-    hw --> vehicle
-
-    clients -. cliente control .-> ws
-    clients -. cliente telemetry .-> ws
-    clients -. comandos e configs .-> ws
-    clients -. subscribe de stream .-> ws
-    ws --> clients
-```
+Os dois compartilham o mesmo nucleo de visao e o mesmo protocolo WebSocket.
 
 ## Bootstrap e shutdown
 
-O bootstrap varia um pouco entre o binario de hardware e o binario de debug, mas a espinha dorsal e a mesma:
+Sequencia de subida:
 
-- carregar `autonomous_car.env`
-- resolver `vision.env`
-- instanciar `AutonomousControlService`
-- subir `WebSocketServer`
-- subir `RoadSegmentationService`
-- aguardar `SIGINT` ou `SIGTERM`
-- executar parada segura
+1. carregar `config/autonomous_car.env`
+2. resolver `config/vision.env`
+3. instanciar `AutonomousControlService`
+4. criar `WebSocketServer`
+5. criar `RoadSegmentationService`
+6. subir servidor e workers
+7. aguardar `SIGINT` ou `SIGTERM`
 
-No binario de hardware, o processo ainda:
+Sequencia de parada:
 
-- inicializa `wiringPi`
-- cria `MotorController` e `SteeringController`
-- registra comandos manuais no `CommandRouter`
-- injeta um `control_sink` que aplica `forward/stop` e `setSteering`
-
-No binario `vision_debug`, o controle autonomo existe apenas para telemetria e visualizacao; nao ha atuacao fisica.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant user as Operador ou start.sh
-    participant entry as main ou vision_debug_main
-    participant gpio as wiringPi
-    participant config as ConfigurationManager
-    participant control as AutonomousControlService
-    participant ws as WebSocketServer
-    participant vision as RoadSegmentationService
-    participant hw as MotorController e SteeringController
-
-    user->>entry: iniciar processo
-    alt binario de hardware
-        entry->>gpio: wiringPiSetupGpio()
-        gpio-->>entry: ok
-    else binario vision_debug
-        Note over entry: sem wiringPi e sem atuadores reais
-    end
-
-    entry->>config: loadDefaults()
-    entry->>config: loadFromFile(config/autonomous_car.env)
-    entry->>entry: resolveProjectPath(config/vision.env)
-    entry->>control: updateConfig() e setDrivingMode()
-    entry->>ws: criar servidor
-
-    alt binario de hardware
-        entry->>hw: criar controllers e registrar comandos manuais
-        entry->>vision: criar com control_sink real
-    else binario vision_debug
-        entry->>vision: criar sem control_sink real
-    end
-
-    entry->>ws: start()
-    entry->>vision: start()
-    Note over entry,vision: loop principal aguarda SIGINT ou SIGTERM
-
-    user-->>entry: SIGINT ou SIGTERM
-    entry->>control: stopAutonomous(service_stop)
-    entry->>vision: stop()
-    entry->>ws: stop()
-
-    alt binario de hardware
-        entry->>hw: stop() e center()
-    end
-
-    entry-->>user: processo encerrado
-```
+1. `stopAutonomous(service_stop)`
+2. parar `RoadSegmentationService`
+3. parar `WebSocketServer`
+4. no binario de hardware, aplicar `motor.stop()` e `steering.center()`
 
 ## Concorrencia interna
 
-O comportamento atual do runtime e melhor entendido como quatro workers coordenados:
+O runtime atual do `RoadSegmentationService` trabalha com tres frentes paralelas:
 
-- `core_thread`: prioridade funcional do pipeline, faz captura e segmentacao.
-- `traffic_sign_thread`: consome jobs de ROI e roda a deteccao de placas.
-- `stream_thread`: renderiza views e serializa `vision.frame` apenas quando existe assinatura.
-- `telemetry_thread`: publica telemetrias agregadas e `telemetry.vision_runtime`.
+- `core_thread`: captura frame, roda segmentacao e atualiza o controle autonomo
+- `stream_thread`: renderiza views e serializa `vision.frame` apenas quando ha assinatura ou janela local
+- `telemetry_thread`: publica `telemetry.road_segmentation`, `telemetry.autonomous_control` e `telemetry.vision_runtime`
 
 Estruturas de sincronizacao relevantes:
 
-- `LatestValueMailbox<TrafficSignJob>`: guarda apenas o ultimo job de placas.
-- `LatestValueMailbox<shared_ptr<CoreFrameSnapshot>>`: guarda apenas o ultimo snapshot para stream/debug.
-- `TelemetryTopicQueue`: mantem apenas o ultimo payload por topico de telemetria pendente.
+- `LatestValueMailbox<shared_ptr<CoreFrameSnapshot>>`: guarda apenas o snapshot mais recente para o stream
+- `TelemetryTopicQueue`: guarda apenas o ultimo payload pendente por topico de telemetria
 
-Isso implementa backpressure por descarte controlado. Se a inferencia de placas ou o encode JPEG ficarem lentos, o `core_thread` continua processando frames mais novos sem acumular uma fila infinita.
+Essa combinacao preserva o comportamento multi-core e evita backlog infinito quando um consumidor fica mais lento que o produtor.
 
 ```mermaid
 flowchart LR
     source["FrameSource"]
     ws["WebSocketServer"]
-    drop["Backpressure controlado: mailboxes mantem o item mais recente e a fila mantem o ultimo payload por topico"]
 
     subgraph rs[RoadSegmentationService]
         core["core_thread"]
-        signbox["LatestValueMailbox TrafficSignJob"]
         streambox["LatestValueMailbox CoreFrameSnapshot"]
         teleq["TelemetryTopicQueue"]
-        sign["traffic_sign_thread"]
-        latest["latest_traffic_sign_result"]
         stream["stream_thread"]
         tele["telemetry_thread"]
     end
 
     source --> core
-    core -->|ROI job| signbox
-    signbox --> sign
-    sign -->|resultado filtrado| latest
-    sign -->|telemetry.traffic_sign_detection| teleq
-
     core -->|CoreFrameSnapshot| streambox
     streambox --> stream
-    latest --> stream
-    stream -->|vision.frame sob demanda| ws
+    stream -->|vision.frame| ws
 
     core -->|telemetry.road_segmentation| teleq
     core -->|telemetry.autonomous_control| teleq
     teleq --> tele
     tele -->|telemetry.* e telemetry.vision_runtime| ws
-
-    drop -. protege .-> signbox
-    drop -. protege .-> streambox
-    drop -. protege .-> teleq
 ```
 
 ## Pipeline por frame
 
-O `core_thread` e o ponto mais importante do runtime:
+O `core_thread` e o caminho critico do runtime:
 
 1. le um frame da fonte configurada
-2. roda `RoadSegmentationPipeline::process`
+2. executa `RoadSegmentationPipeline::process`
 3. gera `RoadSegmentationResult`
 4. chama `AutonomousControlService::process`
-5. produz telemetrias de segmentacao e controle
-6. publica snapshot para stream/debug
-7. recorta ROI para placas quando essa funcionalidade esta habilitada
+5. publica telemetrias de segmentacao e controle
+6. envia o snapshot mais recente para o `stream_thread`
 
 Detalhes importantes:
 
-- `near` e `mid` sao obrigatorios para rastreamento autonomo; `far` e opcional.
-- o `control_sink` so existe no binario de hardware.
-- o stream nao renderiza nada se nao houver `stream:subscribe=*` nem janela local.
+- `near` e `mid` continuam sendo as referencias principais para rastreamento autonomo
+- o `control_sink` so existe no binario de hardware
+- o stream nao renderiza nada se nao houver `stream:subscribe=*` nem janela local
 
-```mermaid
-flowchart LR
-    capture["FrameSource read"]
-    pipeline["RoadSegmentationPipeline process"]
-    seg["RoadSegmentationResult"]
-    control["AutonomousControlService process"]
-    snapshot["CoreFrameSnapshot"]
-    teleq["TelemetryTopicQueue"]
-    signjob["TrafficSignJob com ROI"]
-    signbox["LatestValueMailbox TrafficSignJob"]
-    streambox["LatestValueMailbox CoreFrameSnapshot"]
-    render["VisionDebugViewRenderer"]
-    ws["WebSocketServer"]
-    sink["control_sink"]
-    act["Motor e servo"]
+## Debug local
 
-    capture --> pipeline --> seg
-    seg --> control
-    seg -->|telemetry.road_segmentation| teleq
-    control -->|telemetry.autonomous_control| teleq
+Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o Raspberry abre uma unica janela com:
 
-    seg --> snapshot
-    control --> snapshot
-    snapshot --> streambox
-    streambox --> render
-    render -->|vision.frame sob assinatura| ws
+- painel 2x2 da segmentacao
+- painel lateral do controle autonomo
+- gauge de steering
+- preview top-down da trajetoria
 
-    capture -->|recorte ROI se placas habilitadas| signjob --> signbox
+Nao existe mais:
 
-    control --> sink
-    sink --> act
+- janela local dedicada para placas
+- ROI de placas desenhada no Raspberry
+- bounding boxes de placas desenhadas no stream do Raspberry
+
+## WebSocket
+
+Servidor padrao:
+
+```text
+ws://0.0.0.0:8080
 ```
 
-## Pipeline de placas
+### Entrada
 
-A deteccao de placas esta integrada ao runtime de visao, mas hoje ela ainda e apenas observacional:
-
-- alimenta `telemetry.traffic_sign_detection`
-- alimenta overlays de `annotated` e `dashboard`
-- nao envia comandos de movimento ou direcao ao veiculo
-
-Fluxo atual:
-
-- o `core_thread` calcula a ROI na lateral direita do frame
-- a ROI vira um `TrafficSignJob`
-- o `traffic_sign_thread` executa `EdgeImpulseTrafficSignDetector`
-- o resultado bruto passa por `TrafficSignTemporalFilter`
-- o estado pode ser `disabled`, `idle`, `candidate`, `confirmed` ou `error`
-- o resultado mais recente e publicado em telemetria e usado no overlay
-
-`buildRenderableTrafficSignResult()` ainda esconde do overlay resultados muito antigos para evitar que uma deteccao expirada continue aparecendo como atual.
-
-```mermaid
-flowchart LR
-    frame["Frame atual"]
-    roi["buildTrafficSignRoi"]
-    crop["Recorte da ROI"]
-    mailbox["LatestValueMailbox TrafficSignJob"]
-    detector["EdgeImpulseTrafficSignDetector"]
-    filter["TrafficSignTemporalFilter"]
-    states["Estados: disabled | idle | candidate | confirmed | error"]
-    latest["latest_traffic_sign_result"]
-    renderable["buildRenderableTrafficSignResult"]
-    telemetry["telemetry.traffic_sign_detection"]
-    overlay["Overlay annotated e dashboard"]
-    noctrl["Hoje nao comanda o veiculo"]
-
-    frame --> roi --> crop --> mailbox --> detector --> filter
-    filter --> states
-    filter --> latest
-    latest --> telemetry
-    latest --> renderable --> overlay
-    latest -. apenas observacao .-> noctrl
-```
-
-## Protocolo WebSocket
-
-O servidor usa um unico endpoint textual em `ws://0.0.0.0:8080`. Ele acumula tres papeis:
-
-- roteamento de comandos
-- aplicacao de configuracoes em runtime
-- distribuicao de telemetria e stream de visao
-
-Contrato de sessao:
-
-- existe no maximo um cliente `control`
-- clientes adicionais ficam como `telemetry`
-- por compatibilidade, a primeira conexao que enviar `command:*` ou `config:*` sem `client:*` previo tenta assumir `control` implicitamente
-- assinaturas de stream sao por sessao
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant a as Cliente A
-    participant b as Cliente B
-    participant ws as WebSocketServer
-    participant reg as ClientRegistry
-    participant router as CommandRouter
-    participant config as ConfigurationManager
-
-    a->>ws: config driving.mode=autonomous
-    ws->>reg: ensureController(A)
-    reg-->>ws: A assume control implicitamente
-    ws->>config: updateSetting(driving.mode)
-
-    b->>ws: client telemetry
-    ws->>reg: requestRole(B, telemetry)
-    reg-->>ws: ok
-
-    b->>ws: client control
-    ws->>reg: requestRole(B, control)
-    reg-->>ws: recusado e B permanece telemetry
-
-    a->>ws: command autonomous start
-    ws->>reg: ensureController(A)
-    ws->>router: route(autonomous, start, modo atual)
-    router-->>ws: handled
-
-    b->>ws: command manual left
-    ws->>reg: ensureController(B)
-    reg-->>ws: recusado
-    Note over ws,b: comandos e configs sem papel de controle sao ignorados
-
-    b->>ws: stream subscribe dashboard,annotated
-    ws->>ws: registra views da sessao B
-
-    ws-->>a: telemetry.* e vision.frame conforme assinatura
-    ws-->>b: telemetry.* e vision.frame conforme assinatura
-```
-
-### Interfaces publicas de entrada
+Mensagens aceitas:
 
 - `client:control`
 - `client:telemetry`
-- `command:manual:forward`
-- `command:manual:backward`
-- `command:manual:stop`
-- `command:manual:throttle=<valor>`
-- `command:manual:left`
-- `command:manual:right`
-- `command:manual:center`
-- `command:manual:steering=<valor>`
-- `command:autonomous:start`
-- `command:autonomous:stop`
-- `config:driving.mode=manual|autonomous`
-- `config:steering.sensitivity=<valor>`
-- `config:steering.command_step=<valor>`
-- `config:autonomous.pid.kp=<valor>`
-- `config:autonomous.pid.ki=<valor>`
-- `config:autonomous.pid.kd=<valor>`
+- `command:<origem>:<acao>`
+- `config:<chave>=<valor>`
 - `stream:subscribe=<csv_views>`
+- `signal:detected=<signal_id>`
+- payload JSON `telemetry.traffic_sign_detection`
 
-Observacao:
+Regras:
 
-- `command:manual:*` so esta ativo no binario de hardware `autonomous_car_v3`
-- no binario `autonomous_car_v3_vision_debug`, os comandos ativos sao os de autonomia (`start` e `stop`) e as configuracoes em runtime
+- `command:` e `config:` continuam exigindo sessao `control`
+- `signal:` nao exige sessao `control`
+- JSON `telemetry.traffic_sign_detection` tambem nao exige sessao `control`
+- o servidor nao interpreta semanticamente o JSON de placas; ele apenas valida o tipo e redistribui o payload bruto
 
-### Interfaces publicas de saida
+### Saida
+
+O V3 publica:
 
 - `telemetry.road_segmentation`
 - `telemetry.autonomous_control`
-- `telemetry.traffic_sign_detection`
 - `telemetry.vision_runtime`
 - `vision.frame`
+- `telemetry.traffic_sign_detection` apenas como relay de mensagens externas
 
-Views suportadas em `vision.frame`:
+### Contrato de runtime
 
-- `raw`
-- `preprocess`
-- `mask`
-- `annotated`
-- `dashboard`
+`telemetry.vision_runtime` manteve os campos ligados a placas para nao quebrar o frontend, mas eles ficam neutros porque nao ha inferencia local:
 
-## Controle autonomo
+- `traffic_sign_fps = 0`
+- `traffic_sign_inference_ms = 0`
+- `traffic_sign_dropped_frames = 0`
+- `sign_result_age_ms = -1`
 
-O `AutonomousControlService` usa a segmentacao para manter o veiculo alinhado com a pista. O comportamento detalhado do PID continua documentado em [`pid_control.md`](./pid_control.md), mas operacionalmente o estado atual e:
+Esse comportamento e intencional: compatibilidade de payload sem reintroduzir logica de placas no Raspberry.
 
-- `manual`: o roteamento aceita apenas `command:manual:*`
-- `idle`: modo autonomo armado, mas ainda sem `start`
-- `searching`: autonomia iniciada, mas sem pista valida naquele instante
-- `tracking`: pista valida e confianca suficiente
-- `fail_safe`: parada segura apos lane loss ou baixa confianca alem da tolerancia
+## Stream para o `traffic_sign_service`
 
-Durante `tracking`, o controle lateral segue o pipeline documentado em [`pid_control.md`](./pid_control.md): erro composto com referencias `near/mid/far`, PID calculando a correcao, comando final passando por `clamp + rate limit` e, no binario de hardware, o sink aplicando `forward/stop` e `setSteering`.
+O V3 continua sendo a fonte de frames do servico externo:
 
-Regras operacionais relevantes:
+1. o `traffic_sign_service` conecta como `client:telemetry`
+2. envia `stream:subscribe=raw`
+3. recebe `vision.frame` da view `raw`
+4. processa a inferencia fora do Raspberry
+5. devolve `signal:detected` e `telemetry.traffic_sign_detection`
 
-- `command:autonomous:start` so tem efeito quando `driving_mode=autonomous`
-- `command:autonomous:stop` desarma a autonomia
-- troca de modo para `manual` reseta PID e para o carro
-- nao existe retomada automatica apos `fail_safe`; e preciso novo `command:autonomous:start`
+Esse fluxo permite manter o Raspberry mais limpo e focado no controle do veiculo.
 
-```mermaid
-stateDiagram-v2
-    [*] --> boot
-    boot --> manual : modo manual
-    boot --> idle : modo autonomo
+## Arquivos de configuracao relevantes
 
-    manual --> idle : driving.mode = autonomous
-    idle --> manual : driving.mode = manual
-    searching --> manual : driving.mode = manual
-    tracking --> manual : driving.mode = manual
-    fail_safe --> manual : driving.mode = manual
+- `config/autonomous_car.env`: hardware e tuning do controlador
+- `config/vision.env`: origem de captura, stream e janela local
+- `config/road_segmentation.env`: parametros da segmentacao
 
-    idle --> searching : command autonomous start
-    searching --> tracking : pista valida e confianca ok
-    tracking --> searching : pista indisponivel dentro da tolerancia
+Nao existe mais `config/traffic_sign.env` no `autonomous_car_v3`.
 
-    searching --> idle : command autonomous stop
-    tracking --> idle : command autonomous stop
+## Testes que cobrem o runtime novo
 
-    searching --> fail_safe : lane loss timeout excedido
-    tracking --> fail_safe : lane loss timeout excedido
-    searching --> fail_safe : low confidence persistente
-    tracking --> fail_safe : low confidence persistente
+Os testes ativos cobrem:
 
-    fail_safe --> searching : novo command autonomous start
+- serializacao de `telemetry.vision_runtime`
+- carga do `vision.env` simplificado
+- `RoadSegmentationService` sem pipeline local de placas
+- relay de `telemetry.traffic_sign_detection` no `WebSocketServer`
+- manutencao do canal `signal:detected`
+
+Comandos:
+
+```bash
+cmake -S . -B build
+cmake --build build --parallel
+cd build
+ctest --output-on-failure
 ```
-
-## Degradacao e fail-safe
-
-O fail-safe atual foi desenhado para parar com seguranca sem depender do cliente WebSocket para decidir isso em tempo real.
-
-Casos principais:
-
-- perda de pista por mais tempo que `AUTONOMOUS_LANE_LOSS_TIMEOUT_MS`
-- confianca abaixo de `AUTONOMOUS_MIN_CONFIDENCE` acima da tolerancia
-- `command:autonomous:stop`
-- troca de modo
-- encerramento do servico
-
-No binario de hardware, isso chega ate os atuadores. No binario `vision_debug`, o efeito fica restrito a telemetria e overlay.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant core as core_thread
-    participant control as AutonomousControlService
-    participant sink as control_sink
-    participant hw as Motor e servo
-    participant ws as WebSocketServer e clientes
-
-    core->>control: process(segmentation_result, timestamp_ms)
-
-    alt pista ausente dentro da tolerancia
-        control-->>core: state=searching, motion=forward, steering=ultimo comando
-        core->>ws: telemetry.autonomous_control
-    else lane loss ou baixa confianca alem da tolerancia
-        control-->>core: state=fail_safe, autonomous_started=false, motion=stopped
-        core->>ws: telemetry.autonomous_control com stop_reason
-        opt binario de hardware
-            core->>sink: snapshot fail_safe
-            sink->>hw: stop()
-            sink->>hw: center()
-        end
-        Note over core,ws: no vision_debug o efeito fica apenas em debug e telemetria
-    else encerramento do servico
-        core->>control: stopAutonomous(service_stop)
-        core->>ws: ultimo snapshot com service_stop
-        opt binario de hardware
-            core->>sink: snapshot service_stop
-            sink->>hw: stop()
-            sink->>hw: center()
-        end
-    end
-```
-
-## Arquivos de configuracao
-
-Responsabilidades dos arquivos carregados no runtime:
-
-- `config/autonomous_car.env`
-  - pinos e dinamica de motor
-  - centro e limites de direcao
-  - `DRIVING_MODE`
-  - tuning do PID autonomo
-  - limites de fail-safe
-- `config/vision.env`
-  - origem de captura
-  - camera index ou path local
-  - habilitacao da janela local
-  - `VISION_TELEMETRY_MAX_FPS`
-  - `VISION_STREAM_MAX_FPS`
-  - `TRAFFIC_SIGN_TARGET_FPS`
-  - `VISION_STREAM_JPEG_QUALITY`
-  - paths dos arquivos de segmentacao e placas
-- `config/road_segmentation.env`
-  - parametros `LANE_*` do pipeline compartilhado
-- `config/traffic_sign.env`
-  - enable/disable de placas
-  - definicao da ROI
-  - toggle visual do contorno da ROI (`TRAFFIC_SIGN_DEBUG_ROI_ENABLED`)
-  - confianca minima
-  - filtro temporal de confirmacao e expiracao
-
-### Card de sinalizacao no dashboard local
-
-Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o painel local mostra a ROI de placas e as deteccoes sobre os tiles `Original` e `Saida anotada`. O card `Sinalizacao` da lateral resume:
-
-- `Core FPS`: taxa do loop principal que le captura e segmenta a imagem.
-- `UI FPS`: taxa dos frames que realmente foram codificados e enviados para a interface.
-- `Placa FPS`: taxa efetiva das inferencias de sinalizacao.
-- `Infer placa`: tempo da inferencia de placas em milissegundos.
-- `UI enc`: tempo de codificacao do frame JPEG em milissegundos.
-- `Drop P/UI`: backlog descartado na fila de jobs de placas e na fila do stream.
-- `idade`: idade do ultimo resultado de sinalizacao ainda considerado valido para overlay.
-
-## Limites atuais
-
-- o alvo `autonomous_car_v3` depende de `wiringPi`; quando a biblioteca nao existe, esse binario nao e gerado
-- sem `wiringPi`, o fluxo suportado e `autonomous_car_v3_vision_debug`
-- o stream de visao usa o mesmo WebSocket textual; nao existe endpoint HTTP/MJPEG separado
-- a deteccao de placas hoje nao comanda o veiculo; ela alimenta apenas telemetria e overlay

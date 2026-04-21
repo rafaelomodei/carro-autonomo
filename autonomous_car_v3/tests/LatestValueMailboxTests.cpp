@@ -36,10 +36,9 @@ void testLatestValueMailboxWaitsForNewestSharedPayload() {
            "waitPopFor deve retornar o payload mais recente quando houver item disponivel.");
 }
 
-TestRegistrar latest_mailbox_overwrite_test(
-    "traffic_sign_mailbox_keeps_only_the_latest_item",
-    testLatestValueMailboxKeepsOnlyNewestItem);
-TestRegistrar latest_mailbox_wait_test("traffic_sign_mailbox_waits_for_latest_payload",
+TestRegistrar latest_mailbox_overwrite_test("latest_value_mailbox_keeps_only_the_latest_item",
+                                            testLatestValueMailboxKeepsOnlyNewestItem);
+TestRegistrar latest_mailbox_wait_test("latest_value_mailbox_waits_for_latest_payload",
                                        testLatestValueMailboxWaitsForNewestSharedPayload);
 
 } // namespace

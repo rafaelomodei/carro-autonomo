@@ -131,10 +131,6 @@ bool loadVisionRuntimeConfigFromFile(const std::string &path, VisionRuntimeConfi
         config.segmentation_config_path =
             std::filesystem::absolute(config_path.parent_path() / "road_segmentation.env").string();
     }
-    if (config.traffic_sign_config_path.empty()) {
-        config.traffic_sign_config_path =
-            std::filesystem::absolute(config_path.parent_path() / "traffic_sign.env").string();
-    }
 
     std::ifstream file(path);
     if (!file.is_open()) {
@@ -193,15 +189,6 @@ bool loadVisionRuntimeConfigFromFile(const std::string &path, VisionRuntimeConfi
             continue;
         }
 
-        if (key == "TRAFFIC_SIGN_DEBUG_WINDOW_ENABLED") {
-            if (const auto parsed = parseBool(value)) {
-                config.traffic_sign_debug_window_enabled = *parsed;
-            } else {
-                pushWarning(warnings, "Valor invalido para " + key);
-            }
-            continue;
-        }
-
         if (key == "VISION_TELEMETRY_MAX_FPS") {
             if (const auto parsed = parseDouble(value)) {
                 config.telemetry_max_fps = std::clamp(*parsed, 0.1, 120.0);
@@ -220,15 +207,6 @@ bool loadVisionRuntimeConfigFromFile(const std::string &path, VisionRuntimeConfi
             continue;
         }
 
-        if (key == "TRAFFIC_SIGN_TARGET_FPS") {
-            if (const auto parsed = parseDouble(value)) {
-                config.traffic_sign_target_fps = std::clamp(*parsed, 0.1, 30.0);
-            } else {
-                pushWarning(warnings, "Valor invalido para " + key);
-            }
-            continue;
-        }
-
         if (key == "VISION_STREAM_JPEG_QUALITY") {
             if (const auto parsed = parseInt(value)) {
                 config.stream_jpeg_quality = std::clamp(*parsed, 10, 100);
@@ -240,11 +218,6 @@ bool loadVisionRuntimeConfigFromFile(const std::string &path, VisionRuntimeConfi
 
         if (key == "VISION_SEGMENTATION_CONFIG_PATH") {
             config.segmentation_config_path = resolveMaybeRelativePath(config_path, value);
-            continue;
-        }
-
-        if (key == "VISION_TRAFFIC_SIGN_CONFIG_PATH") {
-            config.traffic_sign_config_path = resolveMaybeRelativePath(config_path, value);
             continue;
         }
 

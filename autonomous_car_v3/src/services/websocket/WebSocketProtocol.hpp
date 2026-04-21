@@ -7,7 +7,7 @@
 
 namespace autonomous_car::services::websocket {
 
-enum class MessageChannel { Client, Command, Config, Stream, Signal, Unknown };
+enum class MessageChannel { Client, Command, Config, Stream, Signal, Telemetry, Unknown };
 
 struct ParsedMessage {
     MessageChannel channel{MessageChannel::Unknown};
