@@ -64,6 +64,8 @@ set(AUTONOMOUS_CAR_V3_COMMON_SOURCES
     src/services/vision/VisionRuntimeTelemetry.cpp
     src/services/vision/VisionSubscriptionRegistry.cpp
     src/services/websocket/ClientRegistry.cpp
+    src/services/websocket/WebSocketProtocol.cpp
+    src/services/traffic_signals/TrafficSignalRegistry.cpp
 )
 
 add_library(autonomous_car_v3_common STATIC
@@ -148,6 +150,7 @@ add_executable(autonomous_car_v3_tests
     tests/VisionDebugStreamTests.cpp
     tests/VisionRuntimeTelemetryTests.cpp
     tests/VisionRuntimeConfigTests.cpp
+    tests/WebSocketProtocolTests.cpp
     tests/WebSocketServerTests.cpp
 )
 

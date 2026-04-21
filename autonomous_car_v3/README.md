@@ -197,6 +197,7 @@ Mensagens de entrada:
 - `command:<origem>:<acao>`
 - `config:<chave>=<valor>`
 - `stream:subscribe=<csv_views>`
+- `signal:detected=<signal_id>`
 
 Compatibilidade:
 
@@ -213,6 +214,7 @@ command:autonomous:start
 command:autonomous:stop
 config:driving.mode=autonomous
 stream:subscribe=raw,mask,annotated
+signal:detected=stop
 ```
 
 Semantica operacional:
@@ -221,6 +223,7 @@ Semantica operacional:
 - No modo `manual`, apenas comandos `command:manual:*` sao aceitos.
 - No modo `autonomous`, o carro fica parado ate receber `command:autonomous:start`.
 - `command:autonomous:stop`, troca de modo, encerramento do servico ou perda de pista acima do timeout executam parada segura.
+- `signal:detected=<signal_id>` aceita `stop`, `turn_left` e `turn_right`, registra o ultimo evento recebido e nao aciona movimento.
 
 Telemetria publicada:
 

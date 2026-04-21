@@ -1,4 +1,5 @@
 #include <atomic>
+#include <cstdint>
 #include <chrono>
 #include <csignal>
 #include <iostream>
@@ -25,6 +26,7 @@
 #include "services/RoadSegmentationService.hpp"
 #include "services/WebSocketServer.hpp"
 #include "services/autonomous_control/AutonomousControlService.hpp"
+#include "services/traffic_signals/TrafficSignalRegistry.hpp"
 
 namespace {
 volatile std::sig_atomic_t g_should_exit = 0;
@@ -58,6 +60,8 @@ int main() {
     using autonomous_car::runtime::resolveProjectPath;
     using autonomous_car::services::RoadSegmentationService;
     using autonomous_car::services::WebSocketServer;
+    using autonomous_car::services::traffic_signals::TrafficSignalRegistry;
+    using autonomous_car::services::traffic_signals::toString;
     namespace autoctrl = autonomous_car::services::autonomous_control;
 
     auto &config_manager = ConfigurationManager::instance();
@@ -73,6 +77,7 @@ int main() {
     auto runtime_config = config_manager.snapshot();
     std::atomic<autonomous_car::DrivingMode> active_driving_mode{runtime_config.driving_mode};
     autoctrl::AutonomousControlService autonomous_control_service;
+    TrafficSignalRegistry traffic_signal_registry;
     autonomous_control_service.updateConfig(runtime_config.autonomous_control);
     autonomous_control_service.setDrivingMode(runtime_config.driving_mode);
 
@@ -162,8 +167,23 @@ int main() {
     };
 
     auto driving_mode_provider = [&active_driving_mode]() { return active_driving_mode.load(); };
+    auto signal_detected_handler = [&traffic_signal_registry](const std::string &signal_id) {
+        const auto now_ms = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count());
+        const bool recorded = traffic_signal_registry.recordDetectedSignal(signal_id, now_ms);
+        if (recorded) {
+            const auto last_signal = traffic_signal_registry.lastDetectedSignal();
+            if (last_signal) {
+                std::cout << "Sinalizacao recebida: " << toString(last_signal->signal_id)
+                          << " em " << last_signal->received_at_ms << " ms" << std::endl;
+            }
+        }
+        return recorded;
+    };
     WebSocketServer server("0.0.0.0", 8080, command_router, config_update_handler,
-                           driving_mode_provider);
+                           driving_mode_provider, signal_detected_handler);
     auto autonomous_sink =
         [&motor_controller, &steering_controller](
             const autoctrl::AutonomousControlSnapshot &snapshot) {
@@ -194,7 +214,7 @@ int main() {
 
     std::cout << "Autonomous Car v3 iniciado em ws://0.0.0.0:8080" << std::endl;
     std::cout << "Canais: command:<origem>:<acao>, config:<chave>=<valor>, "
-                 "client:control/client:telemetry"
+                 "client:control/client:telemetry, signal:detected=<signal_id>"
               << std::endl;
     std::cout << "Modo autonomo: command:autonomous:start | command:autonomous:stop"
               << std::endl;

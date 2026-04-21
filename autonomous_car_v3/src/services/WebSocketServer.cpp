@@ -2,15 +2,14 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <cctype>
 #include <cerrno>
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -23,145 +22,11 @@
 #include <vector>
 
 #include "controllers/CommandRouter.hpp"
+#include "services/websocket/WebSocketProtocol.hpp"
 
 namespace {
 constexpr char kWebSocketGuid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-std::string trim(const std::string &value) {
-    auto begin = value.find_first_not_of(" \t\r\n");
-    if (begin == std::string::npos) {
-        return "";
-    }
-    auto end = value.find_last_not_of(" \t\r\n");
-    return value.substr(begin, end - begin + 1);
-}
-
-std::string toLower(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return value;
-}
-
-enum class MessageChannel { Client, Command, Config, Stream, Unknown };
-
-struct ParsedMessage {
-    MessageChannel channel{MessageChannel::Unknown};
-    std::string key;
-    std::optional<std::string> value;
-    std::optional<std::string> source_token;
-};
-
-std::optional<ParsedMessage> parseInboundMessage(const std::string &payload) {
-    auto trimmed = trim(payload);
-    if (trimmed.empty()) {
-        return std::nullopt;
-    }
-
-    auto delimiter_pos = trimmed.find(':');
-    if (delimiter_pos == std::string::npos) {
-        ParsedMessage parsed;
-        parsed.channel = MessageChannel::Command;
-        parsed.key = trimmed;
-        return parsed;
-    }
-
-    auto channel_token = toLower(trim(trimmed.substr(0, delimiter_pos)));
-    auto remainder = trim(trimmed.substr(delimiter_pos + 1));
-
-    if (channel_token == "client") {
-        ParsedMessage parsed;
-        parsed.channel = MessageChannel::Client;
-        parsed.key = toLower(remainder);
-        return parsed;
-    }
-
-    if (channel_token == "command") {
-        ParsedMessage parsed;
-        parsed.channel = MessageChannel::Command;
-        auto equals_pos = remainder.find('=');
-        std::string command_section;
-        if (equals_pos == std::string::npos) {
-            command_section = remainder;
-        } else {
-            command_section = trim(remainder.substr(0, equals_pos));
-            parsed.value = trim(remainder.substr(equals_pos + 1));
-            if (parsed.value && parsed.value->empty()) {
-                parsed.value = std::nullopt;
-            }
-        }
-
-        auto colon_pos = command_section.find(':');
-        if (colon_pos != std::string::npos) {
-            auto possible_source = trim(command_section.substr(0, colon_pos));
-            auto remainder_section = trim(command_section.substr(colon_pos + 1));
-            if (!possible_source.empty() && !remainder_section.empty()) {
-                parsed.source_token = possible_source;
-                command_section = remainder_section;
-            }
-        }
-
-        if (command_section.empty()) {
-            return std::nullopt;
-        }
-
-        parsed.key = command_section;
-        return parsed;
-    }
-
-    if (channel_token == "config") {
-        auto equals_pos = remainder.find('=');
-        if (equals_pos == std::string::npos) {
-            return std::nullopt;
-        }
-
-        ParsedMessage parsed;
-        parsed.channel = MessageChannel::Config;
-        parsed.key = trim(remainder.substr(0, equals_pos));
-        parsed.value = trim(remainder.substr(equals_pos + 1));
-        return parsed;
-    }
-
-    if (channel_token == "stream") {
-        const auto equals_pos = remainder.find('=');
-        if (equals_pos == std::string::npos) {
-            return std::nullopt;
-        }
-
-        ParsedMessage parsed;
-        parsed.channel = MessageChannel::Stream;
-        parsed.key = trim(remainder.substr(0, equals_pos));
-        parsed.value = trim(remainder.substr(equals_pos + 1));
-        return parsed;
-    }
-
-    return std::nullopt;
-}
-
-std::optional<double> parseCommandValue(const std::optional<std::string> &raw_value) {
-    if (!raw_value || raw_value->empty()) {
-        return std::nullopt;
-    }
-
-    std::string sanitized = trim(*raw_value);
-    if (!sanitized.empty() && sanitized.back() == '%') {
-        sanitized.pop_back();
-    }
-
-    try {
-        double parsed = std::stod(sanitized);
-        if (!std::isfinite(parsed)) {
-            return std::nullopt;
-        }
-        if (std::abs(parsed) > 1.0) {
-            parsed /= 100.0;
-        }
-        parsed = std::clamp(parsed, -1.0, 1.0);
-        return parsed;
-    } catch (const std::exception &) {
-        return std::nullopt;
-    }
-}
+constexpr int kClientSendTimeoutMs = 40;
 
 class Sha1 {
 public:
@@ -319,6 +184,9 @@ bool recvAll(int socket_fd, void *buffer, size_t length) {
     size_t received = 0;
     while (received < length) {
         ssize_t chunk = recv(socket_fd, bytes + received, length - received, 0);
+        if (chunk < 0 && errno == EINTR) {
+            continue;
+        }
         if (chunk <= 0) {
             return false;
         }
@@ -332,6 +200,9 @@ bool sendAll(int socket_fd, const void *buffer, size_t length) {
     size_t sent_total = 0;
     while (sent_total < length) {
         const ssize_t sent = send(socket_fd, bytes + sent_total, length - sent_total, 0);
+        if (sent < 0 && errno == EINTR) {
+            continue;
+        }
         if (sent <= 0) {
             return false;
         }
@@ -476,15 +347,21 @@ bool sendCloseFrame(int client_fd) {
     return sendAll(client_fd, frame, sizeof(frame));
 }
 
-std::optional<autonomous_car::services::websocket::ClientRole> parseClientRole(
-    const std::string &value) {
-    if (value == "control") {
-        return autonomous_car::services::websocket::ClientRole::Control;
+void configureClientSocket(int client_fd) {
+    const int enable = 1;
+    if (setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(enable)) < 0) {
+        std::cerr << "Aviso: falha ao ativar TCP_NODELAY no cliente WebSocket: "
+                  << std::strerror(errno) << std::endl;
     }
-    if (value == "telemetry") {
-        return autonomous_car::services::websocket::ClientRole::Telemetry;
+
+    timeval send_timeout{};
+    send_timeout.tv_sec = 0;
+    send_timeout.tv_usec = kClientSendTimeoutMs * 1000;
+    if (setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout,
+                   sizeof(send_timeout)) < 0) {
+        std::cerr << "Aviso: falha ao configurar timeout de envio do cliente WebSocket: "
+                  << std::strerror(errno) << std::endl;
     }
-    return std::nullopt;
 }
 
 } // namespace
@@ -494,12 +371,14 @@ namespace autonomous_car::services {
 WebSocketServer::WebSocketServer(const std::string &host, int port,
                                  controllers::CommandRouter &command_router,
                                  ConfigUpdateHandler config_handler,
-                                 DrivingModeProvider mode_provider)
+                                 DrivingModeProvider mode_provider,
+                                 SignalDetectedHandler signal_detected_handler)
     : host_{host},
       port_{port},
       command_router_{command_router},
       config_handler_{std::move(config_handler)},
       driving_mode_provider_{std::move(mode_provider)},
+      signal_detected_handler_{std::move(signal_detected_handler)},
       running_{false},
       server_fd_{-1} {}
 
@@ -554,8 +433,12 @@ void WebSocketServer::broadcastText(const std::string &payload) {
         }
 
         if (!sendTextFrame(session->fd, payload)) {
+            const int send_error = errno;
             session->alive.store(false);
             shutdown(session->fd, SHUT_RDWR);
+            std::cerr << "Cliente WebSocket " << session->id
+                      << " desconectado apos falha no envio de texto: "
+                      << std::strerror(send_error) << std::endl;
         }
     }
 }
@@ -574,8 +457,13 @@ void WebSocketServer::broadcastVisionFrame(vision::VisionDebugViewId view,
         }
 
         if (!sendTextFrame(session->fd, payload)) {
+            const int send_error = errno;
             session->alive.store(false);
             shutdown(session->fd, SHUT_RDWR);
+            std::cerr << "Cliente WebSocket " << session->id
+                      << " desconectado apos falha no envio da view "
+                      << vision::toString(view) << ": " << std::strerror(send_error)
+                      << std::endl;
         }
     }
 }
@@ -642,14 +530,14 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
             break;
         }
 
-        const auto parsed_message = parseInboundMessage(*payload_opt);
+        const auto parsed_message = websocket::parseInboundMessage(*payload_opt);
         if (!parsed_message) {
             std::cerr << "Mensagem recebida em formato invalido: " << *payload_opt << std::endl;
             continue;
         }
 
-        if (parsed_message->channel == MessageChannel::Client) {
-            const auto requested_role = parseClientRole(parsed_message->key);
+        if (parsed_message->channel == websocket::MessageChannel::Client) {
+            const auto requested_role = websocket::parseClientRole(parsed_message->key);
             if (!requested_role) {
                 std::cerr << "Papel de cliente desconhecido: " << parsed_message->key << std::endl;
                 continue;
@@ -662,15 +550,14 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
             continue;
         }
 
-        if ((parsed_message->channel == MessageChannel::Command ||
-             parsed_message->channel == MessageChannel::Config) &&
+        if (websocket::messageRequiresControllerRole(parsed_message->channel) &&
             !ensureControllerRole(session)) {
             std::cerr << "Cliente sem permissao de controle; mensagem ignorada." << std::endl;
             continue;
         }
 
-        if (parsed_message->channel == MessageChannel::Command) {
-            const auto normalized_value = parseCommandValue(parsed_message->value);
+        if (parsed_message->channel == websocket::MessageChannel::Command) {
+            const auto normalized_value = websocket::parseCommandValue(parsed_message->value);
             if (parsed_message->value && !normalized_value) {
                 std::cerr << "Valor de comando invalido: " << *parsed_message->value
                           << " para comando " << parsed_message->key << std::endl;
@@ -718,7 +605,7 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
             continue;
         }
 
-        if (parsed_message->channel == MessageChannel::Config) {
+        if (parsed_message->channel == websocket::MessageChannel::Config) {
             if (!parsed_message->value || parsed_message->value->empty()) {
                 std::cerr << "Mensagem de configuracao sem valor." << std::endl;
                 continue;
@@ -736,7 +623,7 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
             continue;
         }
 
-        if (parsed_message->channel == MessageChannel::Stream) {
+        if (parsed_message->channel == websocket::MessageChannel::Stream) {
             if (parsed_message->key != "subscribe" || !parsed_message->value) {
                 std::cerr << "Mensagem de stream invalida: " << *payload_opt << std::endl;
                 continue;
@@ -750,6 +637,25 @@ void WebSocketServer::handleClient(const ClientSessionPtr &session) {
 
             for (const auto &token : invalid_tokens) {
                 std::cerr << "View de stream desconhecida ignorada: " << token << std::endl;
+            }
+            continue;
+        }
+
+        if (parsed_message->channel == websocket::MessageChannel::Signal) {
+            if (parsed_message->key != "detected" || !parsed_message->value ||
+                parsed_message->value->empty()) {
+                std::cerr << "Mensagem de sinalizacao invalida: " << *payload_opt << std::endl;
+                continue;
+            }
+
+            if (!signal_detected_handler_) {
+                std::cerr << "Handler de sinalizacao nao definido." << std::endl;
+                continue;
+            }
+
+            if (!signal_detected_handler_(*parsed_message->value)) {
+                std::cerr << "Sinalizacao desconhecida recebida: " << *parsed_message->value
+                          << std::endl;
             }
             continue;
         }
@@ -807,6 +713,8 @@ void WebSocketServer::run() {
             }
             continue;
         }
+
+        configureClientSocket(client_fd);
 
         const auto request_opt = readHttpRequest(client_fd);
         if (!request_opt) {
