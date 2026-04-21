@@ -11,6 +11,7 @@ import { Toggle } from '@/components/ui/toggle';
 import {
   formatConnectionStateLabel,
   formatStopReasonLabel,
+  formatTrafficSignDetectorStateLabel,
   formatTrackingStateLabel,
   formatVisionDebugViewLabel,
   VisionDebugViewId,
@@ -23,6 +24,7 @@ import VehicleLogs from '@/components/organism/VehicleLogs';
 const DEFAULT_SELECTED_VIEWS: VisionDebugViewId[] = ['dashboard'];
 
 const formatNumber = (value: number, digits = 2) => value.toFixed(digits);
+const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
 
 const formatTimestampLabel = (timestamp: number | null) =>
   timestamp ? new Date(timestamp).toLocaleTimeString('pt-BR') : 'Aguardando';
@@ -110,6 +112,8 @@ const VehicleVisionDebug = () => {
     connectionState,
     lastTelemetryAt,
     roadSegmentationTelemetry,
+    trafficSignTelemetry,
+    visionRuntimeTelemetry,
   } = useVehicleConfig();
   const {
     connectionState: visionConnectionState,
@@ -442,6 +446,130 @@ const VehicleVisionDebug = () => {
                   </>
                 ) : (
                   <p>Aguardando diagnostico do PID.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className='border-border/70 bg-card/70'>
+              <CardHeader className='pb-3'>
+                <CardTitle className='text-base'>Sinalizacao</CardTitle>
+              </CardHeader>
+              <CardContent className='space-y-1 text-sm text-muted-foreground'>
+                {trafficSignTelemetry ? (
+                  <>
+                    <p>
+                      Estado:{' '}
+                      {formatTrafficSignDetectorStateLabel(
+                        trafficSignTelemetry.detector_state
+                      )}
+                    </p>
+                    <p>
+                      Active:{' '}
+                      {trafficSignTelemetry.active_detection?.display_label ??
+                        'nenhum'}
+                    </p>
+                    <p>
+                      Candidate:{' '}
+                      {trafficSignTelemetry.candidate?.display_label ?? 'nenhum'}
+                    </p>
+                    <p>
+                      Brutas: {trafficSignTelemetry.raw_detections.length}
+                    </p>
+                    <p>
+                      Overlay ROI:{' '}
+                      {trafficSignTelemetry.roi.debug_roi_enabled === false
+                        ? 'off'
+                        : 'on'}
+                    </p>
+                    <p>
+                      ROI X:{' '}
+                      {formatPercent(trafficSignTelemetry.roi.left_ratio)} -{' '}
+                      {formatPercent(trafficSignTelemetry.roi.right_ratio)}
+                    </p>
+                    <p>
+                      ROI Y:{' '}
+                      {formatPercent(trafficSignTelemetry.roi.top_ratio)} -{' '}
+                      {formatPercent(trafficSignTelemetry.roi.bottom_ratio)}
+                    </p>
+                    {trafficSignTelemetry.roi.frame_rect ? (
+                      <p>
+                        ROI px: x={trafficSignTelemetry.roi.frame_rect.x}, y=
+                        {trafficSignTelemetry.roi.frame_rect.y}, w=
+                        {trafficSignTelemetry.roi.frame_rect.width}, h=
+                        {trafficSignTelemetry.roi.frame_rect.height}
+                      </p>
+                    ) : null}
+                    {trafficSignTelemetry.roi.source_frame_size ? (
+                      <p>
+                        Frame fonte:{' '}
+                        {trafficSignTelemetry.roi.source_frame_size.width}x
+                        {trafficSignTelemetry.roi.source_frame_size.height}
+                      </p>
+                    ) : null}
+                    <p>
+                      Conf.:{' '}
+                      {trafficSignTelemetry.active_detection
+                        ? formatNumber(
+                            trafficSignTelemetry.active_detection.confidence_score
+                          )
+                        : trafficSignTelemetry.candidate
+                          ? formatNumber(
+                              trafficSignTelemetry.candidate.confidence_score
+                            )
+                          : '0.00'}
+                    </p>
+                    {trafficSignTelemetry.last_error ? (
+                      <p className='text-red-400'>
+                        Erro: {trafficSignTelemetry.last_error}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p>Aguardando telemetria de sinalizacao.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className='border-border/70 bg-card/70'>
+              <CardHeader className='pb-3'>
+                <CardTitle className='text-base'>Performance</CardTitle>
+              </CardHeader>
+              <CardContent className='space-y-1 text-sm text-muted-foreground'>
+                {visionRuntimeTelemetry ? (
+                  <>
+                    <p>Core FPS: {formatNumber(visionRuntimeTelemetry.core_fps, 1)}</p>
+                    <p>
+                      Stream FPS: {formatNumber(visionRuntimeTelemetry.stream_fps, 1)}
+                    </p>
+                    <p>
+                      Sign FPS:{' '}
+                      {formatNumber(visionRuntimeTelemetry.traffic_sign_fps, 1)}
+                    </p>
+                    <p>
+                      Infer ms:{' '}
+                      {formatNumber(
+                        visionRuntimeTelemetry.traffic_sign_inference_ms,
+                        1
+                      )}
+                    </p>
+                    <p>
+                      Encode ms:{' '}
+                      {formatNumber(visionRuntimeTelemetry.stream_encode_ms, 1)}
+                    </p>
+                    <p>
+                      Drop sign/stream:{' '}
+                      {visionRuntimeTelemetry.traffic_sign_dropped_frames} /{' '}
+                      {visionRuntimeTelemetry.stream_dropped_frames}
+                    </p>
+                    <p>
+                      Idade sinal:{' '}
+                      {visionRuntimeTelemetry.sign_result_age_ms >= 0
+                        ? `${visionRuntimeTelemetry.sign_result_age_ms} ms`
+                        : 'sem resultado'}
+                    </p>
+                  </>
+                ) : (
+                  <p>Aguardando telemetria de runtime.</p>
                 )}
               </CardContent>
             </Card>

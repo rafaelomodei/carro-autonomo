@@ -1,6 +1,8 @@
 import type {
   AutonomousControlTelemetry,
   RoadSegmentationTelemetry,
+  TrafficSignDetectionTelemetry,
+  VisionRuntimeTelemetry,
 } from '@/lib/autonomous-car';
 
 export const RECORDING_VIEW_IDS = [
@@ -17,8 +19,16 @@ export type ConversionState = 'idle' | 'converting' | 'completed' | 'failed';
 
 export interface TelemetryRawRecord {
   received_at_ms: number;
-  type: RoadSegmentationTelemetry['type'] | AutonomousControlTelemetry['type'];
-  payload: RoadSegmentationTelemetry | AutonomousControlTelemetry;
+  type:
+    | RoadSegmentationTelemetry['type']
+    | AutonomousControlTelemetry['type']
+    | TrafficSignDetectionTelemetry['type']
+    | VisionRuntimeTelemetry['type'];
+  payload:
+    | RoadSegmentationTelemetry
+    | AutonomousControlTelemetry
+    | TrafficSignDetectionTelemetry
+    | VisionRuntimeTelemetry;
 }
 
 export interface UiLogEventRecord {

@@ -13,6 +13,32 @@ add_subdirectory(
     ${CMAKE_CURRENT_BINARY_DIR}/shared_road_segmentation
 )
 
+file(GLOB_RECURSE AUTONOMOUS_CAR_V3_TRAFFIC_SIGN_MODEL_SOURCES CONFIGURE_DEPENDS
+    third_party/edge_impulse/traffic_sign_model/edge-impulse-sdk/classifier/*.cpp
+    third_party/edge_impulse/traffic_sign_model/edge-impulse-sdk/dsp/*.cpp
+    third_party/edge_impulse/traffic_sign_model/edge-impulse-sdk/porting/posix/*.cpp
+    third_party/edge_impulse/traffic_sign_model/edge-impulse-sdk/tensorflow/*.cc
+    third_party/edge_impulse/traffic_sign_model/edge-impulse-sdk/tensorflow/*.cpp
+    third_party/edge_impulse/traffic_sign_model/edge-impulse-sdk/tensorflow/*.c
+    third_party/edge_impulse/traffic_sign_model/tflite-model/*.cpp
+)
+
+add_library(autonomous_car_v3_traffic_sign_model STATIC
+    ${AUTONOMOUS_CAR_V3_TRAFFIC_SIGN_MODEL_SOURCES}
+)
+
+target_include_directories(autonomous_car_v3_traffic_sign_model
+    PUBLIC
+        third_party/edge_impulse/traffic_sign_model
+)
+
+target_compile_definitions(autonomous_car_v3_traffic_sign_model
+    PUBLIC
+        EI_CLASSIFIER_IMAGE_ENABLED=1
+        EI_CLASSIFIER_TFLITE_ENABLE=1
+        EI_PORTING_POSIX=1
+)
+
 set(AUTONOMOUS_CAR_V3_COMMON_SOURCES
     src/config/ConfigurationManager.cpp
     src/controllers/CommandDispatcher.cpp
@@ -26,8 +52,16 @@ set(AUTONOMOUS_CAR_V3_COMMON_SOURCES
     src/services/autonomous_control/AutonomousControlTelemetry.cpp
     src/services/road_segmentation/RoadSegmentationTelemetry.cpp
     src/services/road_segmentation/VisionRuntimeConfig.cpp
+    src/services/traffic_sign_detection/EdgeImpulseTrafficSignDetector.cpp
+    src/services/traffic_sign_detection/TrafficSignConfig.cpp
+    src/services/traffic_sign_detection/TrafficSignDebugRenderer.cpp
+    src/services/traffic_sign_detection/TrafficSignRuntime.cpp
+    src/services/traffic_sign_detection/TrafficSignTelemetry.cpp
+    src/services/traffic_sign_detection/TrafficSignTemporalFilter.cpp
+    src/services/traffic_sign_detection/TrafficSignTypes.cpp
     src/services/vision/VisionDebugStream.cpp
     src/services/vision/VisionDebugViewRenderer.cpp
+    src/services/vision/VisionRuntimeTelemetry.cpp
     src/services/vision/VisionSubscriptionRegistry.cpp
     src/services/websocket/ClientRegistry.cpp
     src/services/websocket/WebSocketProtocol.cpp
@@ -47,6 +81,7 @@ target_include_directories(autonomous_car_v3_common
 target_link_libraries(autonomous_car_v3_common
     PUBLIC
         road_segmentation_core
+        autonomous_car_v3_traffic_sign_model
         Threads::Threads
         atomic
         ${OpenCV_LIBS}
@@ -103,8 +138,17 @@ add_executable(autonomous_car_v3_tests
     tests/AutonomousControlTelemetryTests.cpp
     tests/CommandRouterTests.cpp
     tests/RoadSegmentationTelemetryTests.cpp
-    tests/TrafficSignalRegistryTests.cpp
+    tests/RoadSegmentationServiceTrafficSignIntegrationTests.cpp
+    tests/TrafficSignConfigTests.cpp
+    tests/TrafficSignDebugRendererTests.cpp
+    tests/TrafficSignMailboxTests.cpp
+    tests/TrafficSignRuntimeTests.cpp
+    tests/TrafficSignTelemetryTests.cpp
+    tests/TrafficSignTemporalFilterTests.cpp
+    tests/TrafficSignTypesTests.cpp
+    tests/VisionDebugViewRendererTests.cpp
     tests/VisionDebugStreamTests.cpp
+    tests/VisionRuntimeTelemetryTests.cpp
     tests/VisionRuntimeConfigTests.cpp
     tests/WebSocketProtocolTests.cpp
     tests/WebSocketServerTests.cpp

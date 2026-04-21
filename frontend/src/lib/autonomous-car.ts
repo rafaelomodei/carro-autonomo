@@ -102,6 +102,78 @@ export interface AutonomousControlTelemetry {
   }>;
 }
 
+export type TrafficSignDetectorState =
+  | 'disabled'
+  | 'idle'
+  | 'candidate'
+  | 'confirmed'
+  | 'error';
+
+export type TrafficSignId = 'stop' | 'turn_left' | 'turn_right' | 'unknown';
+
+export interface TrafficSignBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface TrafficSignDetection {
+  sign_id: TrafficSignId;
+  model_label: string;
+  display_label: string;
+  confidence_score: number;
+  bbox_frame: TrafficSignBoundingBox;
+  bbox_roi: TrafficSignBoundingBox;
+  consecutive_frames: number;
+  required_frames: number;
+  confirmed_at_ms: number;
+  last_seen_at_ms: number;
+}
+
+export interface TrafficSignDetectionTelemetry {
+  type: 'telemetry.traffic_sign_detection';
+  timestamp_ms: number;
+  source: string;
+  detector_state: TrafficSignDetectorState;
+  roi: {
+    left_ratio: number;
+    right_ratio: number;
+    right_width_ratio: number;
+    top_ratio: number;
+    bottom_ratio: number;
+    debug_roi_enabled?: boolean;
+    source_frame_size?: {
+      width: number;
+      height: number;
+    };
+    frame_rect?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+  };
+  raw_detections: TrafficSignDetection[];
+  candidate: TrafficSignDetection | null;
+  active_detection: TrafficSignDetection | null;
+  last_error: string;
+}
+
+export interface VisionRuntimeTelemetry {
+  type: 'telemetry.vision_runtime';
+  timestamp_ms: number;
+  source: string;
+  core_fps: number;
+  stream_fps: number;
+  traffic_sign_fps: number;
+  traffic_sign_inference_ms: number;
+  stream_encode_ms: number;
+  traffic_sign_dropped_frames: number;
+  stream_dropped_frames: number;
+  sign_result_age_ms: number;
+}
+
 export interface VisionFrameMessage {
   type: 'vision.frame';
   view: VisionDebugViewId;
@@ -114,7 +186,9 @@ export interface VisionFrameMessage {
 
 export type VehicleTelemetryMessage =
   | RoadSegmentationTelemetry
-  | AutonomousControlTelemetry;
+  | AutonomousControlTelemetry
+  | TrafficSignDetectionTelemetry
+  | VisionRuntimeTelemetry;
 
 export const DEFAULT_VEHICLE_CONNECTION_URL =
   process.env.NEXT_PUBLIC_DEFAULT_VEHICLE_WS_URL?.trim() ||
@@ -159,7 +233,9 @@ export const parseTelemetryMessage = (
       parsed &&
       typeof parsed === 'object' &&
       (parsed.type === 'telemetry.road_segmentation' ||
-        parsed.type === 'telemetry.autonomous_control')
+        parsed.type === 'telemetry.autonomous_control' ||
+        parsed.type === 'telemetry.traffic_sign_detection' ||
+        parsed.type === 'telemetry.vision_runtime')
     ) {
       return parsed;
     }
@@ -355,6 +431,36 @@ export const formatStopReasonLabel = (
       return 'Baixa confianca';
     case 'service_stop':
       return 'Servico encerrado';
+  }
+};
+
+export const formatTrafficSignDetectorStateLabel = (
+  state: TrafficSignDetectorState
+): string => {
+  switch (state) {
+    case 'disabled':
+      return 'Desabilitado';
+    case 'idle':
+      return 'Aguardando deteccao';
+    case 'candidate':
+      return 'Candidato';
+    case 'confirmed':
+      return 'Confirmado';
+    case 'error':
+      return 'Erro';
+  }
+};
+
+export const formatTrafficSignIdLabel = (signId: TrafficSignId): string => {
+  switch (signId) {
+    case 'stop':
+      return 'Parada obrigatoria';
+    case 'turn_left':
+      return 'Vire a esquerda';
+    case 'turn_right':
+      return 'Vire a direita';
+    case 'unknown':
+      return 'Sinal desconhecido';
   }
 };
 

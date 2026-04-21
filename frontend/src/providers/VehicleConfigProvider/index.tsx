@@ -28,6 +28,8 @@ import {
   RoadSegmentationTelemetry,
   RuntimeSettingKey,
   TELEMETRY_STALE_THRESHOLD_MS,
+  TrafficSignDetectionTelemetry,
+  VisionRuntimeTelemetry,
   VehicleRuntimeConfig,
   VEHICLE_RUNTIME_STORAGE_KEY,
   normalizeVehicleRuntimeConfig,
@@ -45,6 +47,8 @@ interface VehicleConfigContextProps {
   pendingAutonomousCommand: 'start' | 'stop' | null;
   roadSegmentationTelemetry: RoadSegmentationTelemetry | null;
   autonomousControlTelemetry: AutonomousControlTelemetry | null;
+  trafficSignTelemetry: TrafficSignDetectionTelemetry | null;
+  visionRuntimeTelemetry: VisionRuntimeTelemetry | null;
   canSendManualCommands: boolean;
   saveConnectionUrl: (url: string) => void;
   setDrivingMode: (mode: DrivingMode) => void;
@@ -99,6 +103,10 @@ export const VehicleConfigProvider = ({
     useState<RoadSegmentationTelemetry | null>(null);
   const [autonomousControlTelemetry, setAutonomousControlTelemetry] =
     useState<AutonomousControlTelemetry | null>(null);
+  const [trafficSignTelemetry, setTrafficSignTelemetry] =
+    useState<TrafficSignDetectionTelemetry | null>(null);
+  const [visionRuntimeTelemetry, setVisionRuntimeTelemetry] =
+    useState<VisionRuntimeTelemetry | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -396,6 +404,16 @@ export const VehicleConfigProvider = ({
           return;
         }
 
+        if (parsedMessage.type === 'telemetry.traffic_sign_detection') {
+          setTrafficSignTelemetry(parsedMessage);
+          return;
+        }
+
+        if (parsedMessage.type === 'telemetry.vision_runtime') {
+          setVisionRuntimeTelemetry(parsedMessage);
+          return;
+        }
+
         setAutonomousControlTelemetry(parsedMessage);
 
         if (pendingDrivingModeRef.current === parsedMessage.driving_mode) {
@@ -592,6 +610,8 @@ export const VehicleConfigProvider = ({
         pendingAutonomousCommand,
         roadSegmentationTelemetry,
         autonomousControlTelemetry,
+        trafficSignTelemetry,
+        visionRuntimeTelemetry,
         canSendManualCommands,
         saveConnectionUrl,
         setDrivingMode,

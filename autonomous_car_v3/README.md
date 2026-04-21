@@ -2,6 +2,8 @@
 
 Versao focada em controle do veiculo no Raspberry Pi com um pipeline compartilhado de segmentacao de estrada, debug local e telemetria via WebSocket.
 
+Documentacao operacional atual: [`docs/runtime_operation.md`](./docs/runtime_operation.md)
+
 ## O que mudou
 
 - O pipeline de segmentacao agora vem do core compartilhado em `shared/road_segmentation`.
@@ -24,6 +26,7 @@ Usa `wiringPi`, GPIO, segmentacao ao vivo e aplicacao real do comando autonomo n
 ```
 
 Se `wiringPi` nao estiver instalado, esse binario nao sera gerado.
+O script usa `Ninja` por padrao e compila em paralelo com todos os cores disponiveis do Raspberry Pi.
 
 ### 2. Visao/debug local
 
@@ -35,6 +38,25 @@ Executa WebSocket + segmentacao + PID/debug sem depender de `wiringPi`.
 ```
 
 Se o binario de hardware nao existir, `./start.sh` faz fallback automatico para este perfil.
+
+## Build
+
+Dependencia recomendada no Raspberry Pi:
+
+```bash
+sudo apt install ninja-build
+```
+
+O `build.sh` reconfigura o projeto com `Ninja` por padrao e chama o build com paralelismo automatico.
+Se a pasta `build/` ainda estiver com cache antigo de `Unix Makefiles`, ela e recriada automaticamente para migrar o gerador.
+
+Exemplos:
+
+```bash
+./build.sh
+BUILD_JOBS=4 ./build.sh
+BUILD_GENERATOR="Unix Makefiles" ./build.sh
+```
 
 ## Arquivos de configuracao
 
@@ -72,8 +94,10 @@ Detalhes do controlador e do painel local em `docs/pid_control.md`.
 - `VISION_DEBUG_WINDOW_ENABLED`
 - `VISION_TELEMETRY_MAX_FPS`
 - `VISION_STREAM_MAX_FPS`
+- `TRAFFIC_SIGN_TARGET_FPS`
 - `VISION_STREAM_JPEG_QUALITY`
 - `VISION_SEGMENTATION_CONFIG_PATH`
+- `VISION_TRAFFIC_SIGN_CONFIG_PATH`
 
 Defaults:
 
@@ -81,11 +105,31 @@ Defaults:
 VISION_SOURCE_MODE=camera
 VISION_CAMERA_INDEX=0
 VISION_DEBUG_WINDOW_ENABLED=true
+TRAFFIC_SIGN_DEBUG_WINDOW_ENABLED=false
 VISION_TELEMETRY_MAX_FPS=10
 VISION_STREAM_MAX_FPS=5
+TRAFFIC_SIGN_TARGET_FPS=4
 VISION_STREAM_JPEG_QUALITY=70
 VISION_SEGMENTATION_CONFIG_PATH=road_segmentation.env
+VISION_TRAFFIC_SIGN_CONFIG_PATH=traffic_sign.env
 ```
+
+### `config/traffic_sign.env`
+
+- `TRAFFIC_SIGN_ENABLED`
+- `TRAFFIC_SIGN_ROI_LEFT_RATIO`
+- `TRAFFIC_SIGN_ROI_RIGHT_RATIO`
+- `TRAFFIC_SIGN_ROI_TOP_RATIO`
+- `TRAFFIC_SIGN_ROI_BOTTOM_RATIO`
+- `TRAFFIC_SIGN_DEBUG_ROI_ENABLED`
+- `TRAFFIC_SIGN_MIN_CONFIDENCE`
+- `TRAFFIC_SIGN_MIN_CONSECUTIVE_FRAMES`
+- `TRAFFIC_SIGN_MAX_MISSED_FRAMES`
+- `TRAFFIC_SIGN_MAX_RAW_DETECTIONS`
+
+Compatibilidade:
+
+- `TRAFFIC_SIGN_ROI_RIGHT_WIDTH_RATIO` continua aceito como fallback quando `LEFT/RIGHT` nao forem definidos.
 
 ### `config/road_segmentation.env`
 
@@ -107,9 +151,29 @@ Se a fonte local falhar, o servico tenta fallback para a camera configurada.
 Quando `VISION_DEBUG_WINDOW_ENABLED=true`, o servico abre um dashboard expandido:
 
 - painel 2x2 da segmentacao compartilhada
+- ROI e bounding boxes de sinalizacao desenhadas nos tiles `Original` e `Saida anotada`
 - card lateral de controle autonomo com estado, erro composto e termos `P/I/D`
 - indicador visual do comando de direção
 - mapa superior sintetico com referencias `near/mid/far` e trajetoria prevista
+
+Quando `TRAFFIC_SIGN_DEBUG_WINDOW_ENABLED=true`, o servico abre uma segunda janela
+dedicada ao debug da sinalizacao:
+
+- tile esquerdo com o recorte bruto da ROI usado na inferencia
+- tile direito com a imagem preprocessada/redimensionada enviada ao Edge Impulse
+- status do detector, confianca, FPS, tempo de inferencia e idade do resultado
+- labels carregadas do modelo compilado no binario
+- lembrete explicito de que o zip em `edgeImpulse/` nao e usado em runtime
+
+Leitura do card `Sinalizacao`:
+
+- `Core FPS`: frequencia do loop principal de captura + segmentacao.
+- `UI FPS`: frequencia dos frames realmente codificados e enviados para a interface.
+- `Placa FPS`: frequencia das inferencias de sinalizacao.
+- `Infer placa`: tempo medio da inferencia de placas em milissegundos.
+- `UI enc`: tempo de codificacao do frame JPEG da interface em milissegundos.
+- `Drop P/UI`: quantos jobs foram descartados na fila da sinalizacao e no stream quando o consumidor ficou mais lento que o produtor.
+- `idade`: atraso do ultimo resultado de placa usado no overlay.
 
 Atalhos:
 
@@ -219,6 +283,23 @@ Telemetria publicada:
 }
 ```
 
+```json
+{
+  "type": "telemetry.traffic_sign_detection",
+  "timestamp_ms": 1710000000000,
+  "source": "Camera index 0",
+  "detector_state": "confirmed",
+  "roi": {
+    "left_ratio": 0.55,
+    "right_ratio": 1.0,
+    "top_ratio": 0.08,
+    "bottom_ratio": 0.72,
+    "right_width_ratio": 0.45
+  },
+  "raw_detections": []
+}
+```
+
 Frames de visao publicados sob demanda:
 
 ```json
@@ -252,7 +333,7 @@ Semantica do stream:
 
 ```bash
 cmake -S . -B build
-cmake --build build
+cmake --build build --parallel
 cd build
 ctest --output-on-failure
 ```

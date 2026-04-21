@@ -10,6 +10,9 @@
 namespace autonomous_car::services::autonomous_control {
 namespace {
 
+namespace ts = autonomous_car::services::traffic_sign_detection;
+namespace vision = autonomous_car::services::vision;
+
 const cv::Scalar kPanelBackground{18, 18, 18};
 const cv::Scalar kPanelSection{28, 28, 28};
 const cv::Scalar kPanelBorder{78, 78, 78};
@@ -20,7 +23,30 @@ const cv::Scalar kNegativeColor{90, 90, 255};
 const cv::Scalar kNeutralColor{0, 215, 255};
 const cv::Scalar kWarningColor{0, 140, 255};
 const cv::Scalar kDangerColor{0, 0, 255};
-constexpr int kPanelWidth = 360;
+const cv::Scalar kTrafficSignRoiColor{255, 200, 0};
+const cv::Scalar kTrafficSignRawColor{0, 215, 255};
+const cv::Scalar kTrafficSignCandidateColor{0, 165, 255};
+const cv::Scalar kTrafficSignActiveColor{60, 220, 120};
+const cv::Scalar kTrafficSignTextBg{16, 16, 16};
+constexpr int kPanelWidth = 400;
+constexpr int kTileSidebarWidth = 250;
+
+cv::Scalar trafficStateColor(ts::TrafficSignDetectorState state) {
+    switch (state) {
+    case ts::TrafficSignDetectorState::Disabled:
+        return {170, 170, 170};
+    case ts::TrafficSignDetectorState::Idle:
+        return kNeutralColor;
+    case ts::TrafficSignDetectorState::Candidate:
+        return kWarningColor;
+    case ts::TrafficSignDetectorState::Confirmed:
+        return kPositiveColor;
+    case ts::TrafficSignDetectorState::Error:
+        return kDangerColor;
+    }
+
+    return kDangerColor;
+}
 
 cv::Scalar stateColor(const AutonomousControlSnapshot &snapshot) {
     switch (snapshot.tracking_state) {
@@ -38,81 +64,311 @@ cv::Scalar stateColor(const AutonomousControlSnapshot &snapshot) {
     return kNeutralColor;
 }
 
+std::string formatDoubleLocal(double value, int precision = 3) {
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(precision) << value;
+    return stream.str();
+}
+
+cv::Rect clampRectToFrame(const cv::Rect &rect, const cv::Size &size) {
+    const cv::Rect bounds(0, 0, size.width, size.height);
+    return rect & bounds;
+}
+
+cv::Size resolveTrafficSignSourceFrameSize(const ts::TrafficSignFrameResult &traffic_sign_result,
+                                           const cv::Size &fallback_size) {
+    return traffic_sign_result.roi.source_frame_size.area() > 0
+               ? traffic_sign_result.roi.source_frame_size
+               : fallback_size;
+}
+
+bool hasTrafficSignOverlayData(const ts::TrafficSignFrameResult &traffic_sign_result) {
+    return traffic_sign_result.roi.source_frame_size.area() > 0 ||
+           traffic_sign_result.roi.frame_rect.area() > 0 ||
+           !traffic_sign_result.raw_detections.empty() ||
+           traffic_sign_result.candidate.has_value() ||
+           traffic_sign_result.active_detection.has_value() ||
+           !traffic_sign_result.last_error.empty();
+}
+
+void drawLabelTag(cv::Mat &image, const cv::Point &anchor, const std::string &text,
+                  const cv::Scalar &color) {
+    const int baseline_y = std::clamp(anchor.y, 18, std::max(18, image.rows - 6));
+    const cv::Size text_size =
+        cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.45, 1, nullptr);
+    const cv::Rect background(anchor.x, baseline_y - text_size.height - 10,
+                              text_size.width + 12, text_size.height + 10);
+    const cv::Rect clipped = clampRectToFrame(background, image.size());
+    cv::rectangle(image, clipped, kTrafficSignTextBg, cv::FILLED, cv::LINE_AA);
+    cv::rectangle(image, clipped, color, 1, cv::LINE_AA);
+    cv::putText(image, text,
+                {clipped.x + 6, clipped.y + clipped.height - 6}, cv::FONT_HERSHEY_SIMPLEX,
+                0.45, color, 1, cv::LINE_AA);
+}
+
+void drawDetectionBox(cv::Mat &image, const ts::TrafficSignDetection &detection,
+                      const cv::Size &source_frame_size, const cv::Scalar &color, int thickness,
+                      const std::string &prefix = {}) {
+    ts::TrafficSignBoundingBox render_box = detection.bbox_frame;
+    if (source_frame_size.area() > 0 && source_frame_size != image.size()) {
+        render_box = ts::clampBoundingBox(
+            ts::scaleBoundingBox(detection.bbox_frame, source_frame_size, image.size()),
+            cv::Rect(0, 0, image.cols, image.rows));
+    }
+
+    const cv::Rect rect = clampRectToFrame(ts::toCvRect(render_box), image.size());
+    if (rect.area() <= 0) {
+        return;
+    }
+
+    cv::rectangle(image, rect, color, thickness, cv::LINE_AA);
+    const std::string tag =
+        prefix.empty()
+            ? detection.display_label + " " + cv::format("%.2f", detection.confidence_score)
+            : prefix + ": " + detection.display_label + " " +
+                  cv::format("%.2f", detection.confidence_score);
+    drawLabelTag(image, {rect.x, std::max(18, rect.y - 4)}, tag, color);
+}
+
+void drawTrafficSignOverlay(cv::Mat &image, const ts::TrafficSignFrameResult &traffic_sign_result) {
+    if (image.empty() || !hasTrafficSignOverlayData(traffic_sign_result)) {
+        return;
+    }
+
+    const cv::Size source_frame_size =
+        resolveTrafficSignSourceFrameSize(traffic_sign_result, image.size());
+
+    if (traffic_sign_result.roi.debug_roi_enabled) {
+        const ts::TrafficSignRoi render_roi = ts::buildTrafficSignRoi(
+            image.size(), traffic_sign_result.roi.left_ratio, traffic_sign_result.roi.right_ratio,
+            traffic_sign_result.roi.top_ratio, traffic_sign_result.roi.bottom_ratio,
+            traffic_sign_result.roi.debug_roi_enabled);
+        const cv::Rect roi_rect = clampRectToFrame(render_roi.frame_rect, image.size());
+        if (roi_rect.area() > 0) {
+            cv::rectangle(image, roi_rect, kTrafficSignRoiColor, 2, cv::LINE_AA);
+            drawLabelTag(image, {roi_rect.x, roi_rect.y + 20}, "Traffic ROI",
+                         kTrafficSignRoiColor);
+        }
+    }
+
+    for (const auto &detection : traffic_sign_result.raw_detections) {
+        drawDetectionBox(image, detection, source_frame_size, kTrafficSignRawColor, 1);
+    }
+
+    if (traffic_sign_result.candidate.has_value()) {
+        drawDetectionBox(image, *traffic_sign_result.candidate, source_frame_size,
+                         kTrafficSignCandidateColor, 2, "Candidate");
+    }
+
+    if (traffic_sign_result.active_detection.has_value()) {
+        drawDetectionBox(image, *traffic_sign_result.active_detection, source_frame_size,
+                         kTrafficSignActiveColor, 3, "Active");
+    }
+}
+
+std::string detectorSummary(const ts::TrafficSignFrameResult &traffic_sign_result) {
+    if (!traffic_sign_result.last_error.empty()) {
+        return "Erro: " + traffic_sign_result.last_error;
+    }
+
+    if (traffic_sign_result.active_detection.has_value()) {
+        return "Ativa: " + traffic_sign_result.active_detection->display_label + " " +
+               formatDoubleLocal(traffic_sign_result.active_detection->confidence_score, 2);
+    }
+
+    if (traffic_sign_result.candidate.has_value()) {
+        return "Cand.: " + traffic_sign_result.candidate->display_label + " " +
+               formatDoubleLocal(traffic_sign_result.candidate->confidence_score, 2);
+    }
+
+    return "Aguardando deteccao";
+}
+
+std::string detectorSummaryLabel(const ts::TrafficSignFrameResult &traffic_sign_result) {
+    std::string summary = detectorSummary(traffic_sign_result);
+    constexpr std::size_t kMaxSummaryLength = 44;
+    if (summary.size() <= kMaxSummaryLength) {
+        return summary;
+    }
+    return summary.substr(0, kMaxSummaryLength - 3) + "...";
+}
+
+std::string formatAgeLabel(std::int64_t age_ms) {
+    return age_ms >= 0 ? std::to_string(age_ms) + " ms" : "n/a";
+}
+
 } // namespace
 
 cv::Mat AutonomousControlDebugRenderer::render(
     const road_segmentation_lab::pipeline::RoadSegmentationResult &result,
     const road_segmentation_lab::config::LabConfig &config, const std::string &source_label,
-    const std::string &calibration_status, const AutonomousControlSnapshot &snapshot) const {
+    const std::string &calibration_status, const AutonomousControlSnapshot &snapshot,
+    const vision::VisionRuntimeTelemetry &runtime_telemetry,
+    const ts::TrafficSignFrameResult &traffic_sign_result) const {
     cv::Mat segmentation_panel =
         segmentation_renderer_.render(result, config, source_label, calibration_status);
     if (segmentation_panel.empty()) {
         return segmentation_panel;
     }
 
-    cv::Mat control_panel = buildControlPanel(snapshot, {kPanelWidth, segmentation_panel.rows});
+    drawTrafficSignOverlayOnSegmentationPanel(segmentation_panel, result, traffic_sign_result);
+
+    cv::Mat control_panel = buildControlPanel(snapshot, runtime_telemetry, traffic_sign_result,
+                                              {kPanelWidth, segmentation_panel.rows});
     cv::Mat full_panel;
     cv::hconcat(segmentation_panel, control_panel, full_panel);
     return full_panel;
 }
 
-cv::Mat AutonomousControlDebugRenderer::buildControlPanel(const AutonomousControlSnapshot &snapshot,
-                                                          cv::Size size) {
+cv::Mat AutonomousControlDebugRenderer::buildControlPanel(
+    const AutonomousControlSnapshot &snapshot,
+    const vision::VisionRuntimeTelemetry &runtime_telemetry,
+    const ts::TrafficSignFrameResult &traffic_sign_result,
+    cv::Size size) {
     cv::Mat panel(size, CV_8UC3, kPanelBackground);
-    drawControlStatus(panel, snapshot);
-    drawSteeringGauge(panel, snapshot, {22, 132, panel.cols - 44, 130});
-    drawTopDownPreview(panel, snapshot, {22, 290, panel.cols - 44, panel.rows - 312});
+    const int padding = 18;
+    const int gap = 12;
+    const int inner_width = panel.cols - padding * 2;
+    const int control_height = 102;
+    const int gauge_height = 78;
+    const int min_preview_height = 64;
+    const int traffic_height = std::max(
+        140, panel.rows - (padding * 2 + gap * 3 + control_height + gauge_height +
+                           min_preview_height));
+
+    const cv::Rect control_area(padding, padding, inner_width, control_height);
+    const cv::Rect traffic_area(padding, control_area.y + control_area.height + gap, inner_width,
+                                traffic_height);
+    const cv::Rect gauge_area(padding, traffic_area.y + traffic_area.height + gap, inner_width,
+                              gauge_height);
+    const int top_down_y = gauge_area.y + gauge_area.height + gap;
+    const int top_down_height = std::max(48, panel.rows - top_down_y - padding);
+
+    drawControlStatus(panel, snapshot, control_area);
+    drawTrafficSignStatus(panel, runtime_telemetry, traffic_sign_result, traffic_area);
+    drawSteeringGauge(panel, snapshot, gauge_area);
+    drawTopDownPreview(panel, snapshot,
+                       {padding, top_down_y, inner_width, top_down_height});
     cv::rectangle(panel, {0, 0}, {panel.cols - 1, panel.rows - 1}, kPanelBorder, 1, cv::LINE_AA);
     return panel;
 }
 
 void AutonomousControlDebugRenderer::drawControlStatus(cv::Mat &panel,
-                                                       const AutonomousControlSnapshot &snapshot) {
-    cv::rectangle(panel, {18, 18}, {panel.cols - 18, 110}, kPanelSection, cv::FILLED);
-    cv::rectangle(panel, {18, 18}, {panel.cols - 18, 110}, kPanelBorder, 1, cv::LINE_AA);
+                                                       const AutonomousControlSnapshot &snapshot,
+                                                       const cv::Rect &area) {
+    cv::rectangle(panel, area, kPanelSection, cv::FILLED);
+    cv::rectangle(panel, area, kPanelBorder, 1, cv::LINE_AA);
 
-    cv::putText(panel, "Controle autonomo", {32, 48}, cv::FONT_HERSHEY_SIMPLEX, 0.72,
+    cv::putText(panel, "Controle autonomo", {area.x + 14, area.y + 26},
+                cv::FONT_HERSHEY_SIMPLEX, 0.64,
                 kTextPrimary, 2, cv::LINE_AA);
-    cv::putText(panel, "Modo: " + std::string(toString(snapshot.driving_mode)), {32, 72},
-                cv::FONT_HERSHEY_SIMPLEX, 0.5, kTextSecondary, 1, cv::LINE_AA);
-    cv::putText(panel, "Estado: " + std::string(toString(snapshot.tracking_state)), {32, 94},
-                cv::FONT_HERSHEY_SIMPLEX, 0.52, stateColor(snapshot), 1, cv::LINE_AA);
+    cv::putText(panel, "Modo: " + std::string(toString(snapshot.driving_mode)),
+                {area.x + 14, area.y + 46}, cv::FONT_HERSHEY_SIMPLEX, 0.46, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel, "Estado: " + std::string(toString(snapshot.tracking_state)),
+                {area.x + 14, area.y + 66}, cv::FONT_HERSHEY_SIMPLEX, 0.48,
+                stateColor(snapshot), 1, cv::LINE_AA);
     cv::putText(panel,
                 "Start: " + std::string(snapshot.autonomous_started ? "on" : "off") +
                     " | Motion: " + std::string(toString(snapshot.motion_command)),
-                {32, 116}, cv::FONT_HERSHEY_SIMPLEX, 0.45, kTextSecondary, 1, cv::LINE_AA);
-
-    const int x = 32;
-    int y = 156;
-    const auto draw_line = [&](const std::string &text, const cv::Scalar &color = kTextSecondary) {
-        cv::putText(panel, text, {x, y}, cv::FONT_HERSHEY_SIMPLEX, 0.46, color, 1, cv::LINE_AA);
-        y += 20;
-    };
+                {area.x + 14, area.y + 86}, cv::FONT_HERSHEY_SIMPLEX, 0.40, kTextSecondary, 1,
+                cv::LINE_AA);
 
     if (snapshot.driving_mode == DrivingMode::Manual) {
-        draw_line("PID inativo no modo manual", kNeutralColor);
-        draw_line("Use o modo autonomous + start");
+        cv::putText(panel, "PID inativo no modo manual", {area.x + 14, area.y + 104},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.38, kNeutralColor, 1, cv::LINE_AA);
         return;
     }
 
-    draw_line("Stop: " + std::string(toString(snapshot.stop_reason)));
-    draw_line("Conf.: " + formatDouble(snapshot.confidence_score, 2) +
-              (snapshot.confidence_ok ? " ok" : " low"),
-              snapshot.confidence_ok ? kPositiveColor : kWarningColor);
-    draw_line("Erro preview: " + formatDouble(snapshot.preview_error));
-    draw_line("Steering cmd: " + formatDouble(snapshot.steering_command),
-              stateColor(snapshot));
-    draw_line("P/I/D: " + formatDouble(snapshot.pid.proportional) + " / " +
-                  formatDouble(snapshot.pid.integral) + " / " +
-                  formatDouble(snapshot.pid.derivative),
-              kTextPrimary);
-    draw_line("Heading: " +
-              std::string(snapshot.heading_valid ? formatDouble(snapshot.heading_error_rad)
-                                                 : "missing"));
-    draw_line("Curv.: " +
-              std::string(snapshot.curvature_valid
-                              ? formatDouble(snapshot.curvature_indicator_rad)
-                              : "missing"));
+    cv::putText(panel,
+                "Conf.: " + formatDouble(snapshot.confidence_score, 2) +
+                    " | Steering: " + formatDouble(snapshot.steering_command, 2),
+                {area.x + 14, area.y + 104}, cv::FONT_HERSHEY_SIMPLEX, 0.38,
+                snapshot.confidence_ok ? kPositiveColor : kWarningColor, 1, cv::LINE_AA);
+}
+
+void AutonomousControlDebugRenderer::drawTrafficSignStatus(
+    cv::Mat &panel, const vision::VisionRuntimeTelemetry &runtime_telemetry,
+    const ts::TrafficSignFrameResult &traffic_sign_result,
+    const cv::Rect &area) {
+    cv::rectangle(panel, area, kPanelSection, cv::FILLED);
+    cv::rectangle(panel, area, kPanelBorder, 1, cv::LINE_AA);
+    cv::putText(panel, "Sinalizacao", {area.x + 14, area.y + 26}, cv::FONT_HERSHEY_SIMPLEX,
+                0.6, kTextPrimary, 1, cv::LINE_AA);
+    cv::putText(panel,
+                "Estado: " +
+                    std::string(ts::toString(traffic_sign_result.detector_state)),
+                {area.x + 14, area.y + 46}, cv::FONT_HERSHEY_SIMPLEX, 0.45,
+                trafficStateColor(traffic_sign_result.detector_state), 1, cv::LINE_AA);
+    cv::putText(panel,
+                "ROI X: " + formatDouble(traffic_sign_result.roi.left_ratio, 2) + " -> " +
+                    formatDouble(traffic_sign_result.roi.right_ratio, 2),
+                {area.x + 14, area.y + 64}, cv::FONT_HERSHEY_SIMPLEX, 0.36, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "ROI Y: " + formatDouble(traffic_sign_result.roi.top_ratio, 2) + " -> " +
+                    formatDouble(traffic_sign_result.roi.bottom_ratio, 2) + " | overlay: " +
+                    std::string(traffic_sign_result.roi.debug_roi_enabled ? "on" : "off"),
+                {area.x + 14, area.y + 82}, cv::FONT_HERSHEY_SIMPLEX, 0.36, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                detectorSummaryLabel(traffic_sign_result),
+                {area.x + 14, area.y + 100}, cv::FONT_HERSHEY_SIMPLEX, 0.36,
+                !traffic_sign_result.last_error.empty() ? kDangerColor
+                                                        : trafficStateColor(
+                                                              traffic_sign_result.detector_state),
+                1, cv::LINE_AA);
+    cv::putText(panel,
+                "Deteccoes: " + std::to_string(traffic_sign_result.raw_detections.size()) +
+                    " | Core FPS: " + formatDouble(runtime_telemetry.core_fps, 1),
+                {area.x + 14, area.y + 118}, cv::FONT_HERSHEY_SIMPLEX, 0.36, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "UI FPS: " + formatDouble(runtime_telemetry.stream_fps, 1) +
+                    " | Placa FPS: " +
+                    formatDouble(runtime_telemetry.traffic_sign_fps, 1),
+                {area.x + 14, area.y + 136}, cv::FONT_HERSHEY_SIMPLEX, 0.36, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "Infer placa: " +
+                    formatDouble(runtime_telemetry.traffic_sign_inference_ms, 1) + " / " +
+                    "UI enc: " + formatDouble(runtime_telemetry.stream_encode_ms, 1) + " ms",
+                {area.x + 14, area.y + 154}, cv::FONT_HERSHEY_SIMPLEX, 0.36, kTextSecondary, 1,
+                cv::LINE_AA);
+    cv::putText(panel,
+                "Drop P/UI: " +
+                    std::to_string(runtime_telemetry.traffic_sign_dropped_frames) + " / " +
+                    std::to_string(runtime_telemetry.stream_dropped_frames) + " | idade: " +
+                    formatAgeLabel(runtime_telemetry.sign_result_age_ms),
+                {area.x + 14, area.y + 172}, cv::FONT_HERSHEY_SIMPLEX, 0.36, kTextSecondary, 1,
+                cv::LINE_AA);
+}
+
+void AutonomousControlDebugRenderer::drawTrafficSignOverlayOnSegmentationPanel(
+    cv::Mat &panel, const road_segmentation_lab::pipeline::RoadSegmentationResult &result,
+    const ts::TrafficSignFrameResult &traffic_sign_result) {
+    if (panel.empty() || result.resized_frame.empty()) {
+        return;
+    }
+
+    const cv::Size tile_size = result.resized_frame.size();
+    if (tile_size.width <= 0 || tile_size.height <= 0) {
+        return;
+    }
+
+    const int tile_card_width = tile_size.width + kTileSidebarWidth;
+    const cv::Rect original_tile_rect(0, 0, tile_size.width, tile_size.height);
+    const cv::Rect annotated_tile_rect(tile_card_width, tile_size.height, tile_size.width,
+                                       tile_size.height);
+
+    if (original_tile_rect.br().x <= panel.cols && original_tile_rect.br().y <= panel.rows) {
+        cv::Mat original_tile = panel(original_tile_rect);
+        drawTrafficSignOverlay(original_tile, traffic_sign_result);
+    }
+    if (annotated_tile_rect.br().x <= panel.cols && annotated_tile_rect.br().y <= panel.rows) {
+        cv::Mat annotated_tile = panel(annotated_tile_rect);
+        drawTrafficSignOverlay(annotated_tile, traffic_sign_result);
+    }
 }
 
 void AutonomousControlDebugRenderer::drawSteeringGauge(cv::Mat &panel,
