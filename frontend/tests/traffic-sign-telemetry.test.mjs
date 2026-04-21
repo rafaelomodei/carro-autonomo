@@ -89,6 +89,37 @@ const telemetryPayload = JSON.stringify({
 });
 
 const parsed = parseTelemetryMessage(telemetryPayload);
+const fallbackParsed = parseTelemetryMessage(
+  JSON.stringify({
+    type: 'telemetry.traffic_sign_detection',
+    timestamp_ms: 123456900,
+    source: 'Camera index 0',
+    detector_state: 'error',
+    roi: {
+      left_ratio: 0.55,
+      right_ratio: 1.0,
+      right_width_ratio: 0.45,
+      top_ratio: 0.08,
+      bottom_ratio: 0.72,
+      debug_roi_enabled: false,
+    },
+    raw_detections: [],
+    candidate: {
+      sign_id: 'turn_left',
+      model_label: 'Vire a esquerda sign',
+      display_label: 'Vire a esquerda',
+      confidence_score: 0.62,
+      bbox_frame: { x: 190, y: 44, width: 48, height: 48 },
+      bbox_roi: { x: 62, y: 14, width: 48, height: 48 },
+      consecutive_frames: 1,
+      required_frames: 2,
+      confirmed_at_ms: 0,
+      last_seen_at_ms: 123456900,
+    },
+    active_detection: null,
+    last_error: 'Falha ao classificar frame atual.',
+  })
+);
 const runtimeParsed = parseTelemetryMessage(
   JSON.stringify({
     type: 'telemetry.vision_runtime',
@@ -120,6 +151,25 @@ assert.equal(
   parsed.roi.frame_rect?.width,
   144,
   'A telemetria deve preservar a geometria em pixels da ROI.'
+);
+assert.ok(
+  fallbackParsed,
+  'O parser deve aceitar telemetria sem deteccao ativa quando houver candidata.'
+);
+assert.equal(
+  fallbackParsed?.active_detection,
+  null,
+  'A ausencia de deteccao ativa deve ser preservada.'
+);
+assert.equal(
+  fallbackParsed?.candidate?.sign_id,
+  'turn_left',
+  'A deteccao candidata deve ser preservada no payload parseado.'
+);
+assert.equal(
+  fallbackParsed?.last_error,
+  'Falha ao classificar frame atual.',
+  'A mensagem de erro do detector deve ser preservada.'
 );
 assert.equal(
   runtimeParsed?.type,

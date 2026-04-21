@@ -11,9 +11,11 @@ import { Toggle } from '@/components/ui/toggle';
 import {
   formatConnectionStateLabel,
   formatStopReasonLabel,
+  formatTrafficSignIdLabel,
   formatTrafficSignDetectorStateLabel,
   formatTrackingStateLabel,
   formatVisionDebugViewLabel,
+  TrafficSignDetection,
   VisionDebugViewId,
 } from '@/lib/autonomous-car';
 import { emitUiLogEvent } from '@/lib/vehicle-events';
@@ -25,6 +27,18 @@ const DEFAULT_SELECTED_VIEWS: VisionDebugViewId[] = ['dashboard'];
 
 const formatNumber = (value: number, digits = 2) => value.toFixed(digits);
 const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
+const formatTrafficSignLabel = (
+  detection: Pick<TrafficSignDetection, 'display_label' | 'sign_id'> | null
+) => {
+  if (!detection) {
+    return 'nenhuma';
+  }
+
+  const displayLabel = detection.display_label.trim();
+  return displayLabel.length > 0
+    ? displayLabel
+    : formatTrafficSignIdLabel(detection.sign_id);
+};
 
 const formatTimestampLabel = (timestamp: number | null) =>
   timestamp ? new Date(timestamp).toLocaleTimeString('pt-BR') : 'Aguardando';
@@ -196,6 +210,8 @@ const VehicleVisionDebug = () => {
   const lastFrameLabel = formatTimestampLabel(lastFrameAt);
   const activeViews = selectedViews;
   const fullscreenFrame = fullscreenView ? frames[fullscreenView] : null;
+  const highlightedTrafficSignDetection =
+    trafficSignTelemetry?.active_detection ?? trafficSignTelemetry?.candidate ?? null;
   const fullscreenFrameDataUrl = fullscreenFrame
     ? `data:${fullscreenFrame.mime};base64,${fullscreenFrame.data}`
     : null;
@@ -454,7 +470,7 @@ const VehicleVisionDebug = () => {
               <CardHeader className='pb-3'>
                 <CardTitle className='text-base'>Sinalizacao</CardTitle>
               </CardHeader>
-              <CardContent className='space-y-1 text-sm text-muted-foreground'>
+              <CardContent className='space-y-2 text-sm text-muted-foreground'>
                 {trafficSignTelemetry ? (
                   <>
                     <p>
@@ -464,30 +480,32 @@ const VehicleVisionDebug = () => {
                       )}
                     </p>
                     <p>
-                      Active:{' '}
-                      {trafficSignTelemetry.active_detection?.display_label ??
-                        'nenhum'}
+                      Deteccao ativa:{' '}
+                      {formatTrafficSignLabel(
+                        trafficSignTelemetry.active_detection
+                      )}
                     </p>
                     <p>
-                      Candidate:{' '}
-                      {trafficSignTelemetry.candidate?.display_label ?? 'nenhum'}
+                      Candidata:{' '}
+                      {formatTrafficSignLabel(trafficSignTelemetry.candidate)}
                     </p>
                     <p>
-                      Brutas: {trafficSignTelemetry.raw_detections.length}
+                      Deteccoes brutas nesta amostra:{' '}
+                      {trafficSignTelemetry.raw_detections.length}
                     </p>
                     <p>
-                      Overlay ROI:{' '}
+                      Overlay da ROI:{' '}
                       {trafficSignTelemetry.roi.debug_roi_enabled === false
-                        ? 'off'
-                        : 'on'}
+                        ? 'desligado'
+                        : 'ligado'}
                     </p>
                     <p>
-                      ROI X:{' '}
+                      ROI horizontal:{' '}
                       {formatPercent(trafficSignTelemetry.roi.left_ratio)} -{' '}
                       {formatPercent(trafficSignTelemetry.roi.right_ratio)}
                     </p>
                     <p>
-                      ROI Y:{' '}
+                      ROI vertical:{' '}
                       {formatPercent(trafficSignTelemetry.roi.top_ratio)} -{' '}
                       {formatPercent(trafficSignTelemetry.roi.bottom_ratio)}
                     </p>
@@ -507,17 +525,36 @@ const VehicleVisionDebug = () => {
                       </p>
                     ) : null}
                     <p>
-                      Conf.:{' '}
-                      {trafficSignTelemetry.active_detection
-                        ? formatNumber(
-                            trafficSignTelemetry.active_detection.confidence_score
+                      Confianca em foco:{' '}
+                      {highlightedTrafficSignDetection
+                        ? formatPercent(
+                            highlightedTrafficSignDetection.confidence_score
                           )
-                        : trafficSignTelemetry.candidate
-                          ? formatNumber(
-                              trafficSignTelemetry.candidate.confidence_score
-                            )
-                          : '0.00'}
+                        : '0.0%'}
                     </p>
+                    {trafficSignTelemetry.raw_detections.length > 0 ? (
+                      <div className='rounded-md border border-border/60 bg-background/40 p-3'>
+                        <p className='font-medium text-foreground'>
+                          Top deteccoes brutas
+                        </p>
+                        <div className='mt-2 space-y-1'>
+                          {trafficSignTelemetry.raw_detections
+                            .slice(0, 3)
+                            .map((detection, index) => (
+                              <p
+                                key={`${detection.sign_id}-${detection.last_seen_at_ms}-${index}`}
+                              >
+                                {index + 1}. {formatTrafficSignLabel(detection)} |{' '}
+                                {formatPercent(detection.confidence_score)} | frames{' '}
+                                {detection.consecutive_frames}/
+                                {detection.required_frames}
+                              </p>
+                            ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p>Nenhuma deteccao bruta nesta amostra.</p>
+                    )}
                     {trafficSignTelemetry.last_error ? (
                       <p className='text-red-400'>
                         Erro: {trafficSignTelemetry.last_error}
@@ -525,7 +562,7 @@ const VehicleVisionDebug = () => {
                     ) : null}
                   </>
                 ) : (
-                  <p>Aguardando telemetria de sinalizacao.</p>
+                  <p>Aguardando telemetria de sinalizacao recebida do veiculo.</p>
                 )}
               </CardContent>
             </Card>

@@ -28,6 +28,7 @@ Checks:
 
 ```bash
 npm run lint
+npm run test:traffic-sign
 npm run build
 ```
 
@@ -69,9 +70,14 @@ O frontend interpreta apenas:
 
 - `telemetry.road_segmentation`
 - `telemetry.autonomous_control`
+- `telemetry.traffic_sign_detection`
+- `telemetry.vision_runtime`
 - `vision.frame` em uma segunda conexao WebSocket dedicada ao stream de visao
 
 O estado operacional da UI vem dessas telemetrias. O front pode mostrar um estado pendente logo apos o envio de um comando, mas a confirmacao real vem do backend.
+O frontend nao consome diretamente o `traffic_sign_service`; a tela `/debug`
+recebe a sinalizacao sempre via `autonomous_car_v3`. A UI tambem nao interpreta
+`signal:detected=<signal_id>` e usa apenas o payload JSON estruturado.
 
 ### Stream de visao
 
@@ -110,7 +116,7 @@ Views suportadas:
 
 - `Settings` controla conexao, modo de conducao, `start/stop` autonomo, `steering.sensitivity`, `steering.command_step` e `Kp/Ki/Kd`.
 - `Joystick` opera em modo `segurar para mover`: enquanto o botao ou tecla estiver pressionado, o frontend reenfileira comandos manuais em intervalo curto para nao estourar o timeout do backend.
-- `Debug` virou a central de visao: seleciona views, abre o stream sob demanda e combina os frames com a telemetria recebida no socket de controle.
+- `Debug` virou a central de visao: seleciona views, abre o stream sob demanda e combina os frames com `telemetry.road_segmentation`, `telemetry.autonomous_control`, `telemetry.traffic_sign_detection` e `telemetry.vision_runtime` recebidas no socket de controle.
 - O frontend persiste localmente a URL do WebSocket e os ajustes de runtime que ele controla, reaplicando-os quando reconecta.
 - `command:autonomous:start` nao e reenviado automaticamente em reconexoes.
 
