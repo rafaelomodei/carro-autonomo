@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # GCC on Raspberry Pi frequently emits noisy psABI notes for STL iterator/list passing.
+    add_compile_options(-Wno-psabi)
+endif ()
+
 find_package(Threads REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio highgui calib3d)
 
