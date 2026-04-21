@@ -1,35 +1,35 @@
 #include "edge_impulse/LabelMapping.hpp"
 
-#include <cctype>
 #include <string>
-
-namespace {
-
-std::string normalize(std::string_view value) {
-    std::string normalized;
-    normalized.reserve(value.size());
-    for (char ch : value) {
-        normalized.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
-    }
-    return normalized;
-}
-
-} // namespace
 
 namespace traffic_sign_service::edge_impulse {
 
-std::optional<TrafficSignalId> trafficSignalIdFromModelLabel(std::string_view label) {
-    const auto normalized = normalize(label);
+TrafficSignalId trafficSignalIdFromModelLabel(std::string_view label) {
+    std::string normalized;
+    normalized.reserve(label.size());
 
-    if (normalized == "parada obrigatoria sign") {
+    for (char ch : label) {
+        if (std::isalnum(static_cast<unsigned char>(ch)) != 0) {
+            normalized.push_back(
+                static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+        }
+    }
+
+    if (normalized == "paradaobrigatoriasign" || normalized == "stopsign") {
         return TrafficSignalId::Stop;
     }
 
-    if (normalized == "vire a esquerda sign") {
+    if (normalized == "vireaesquerdasign" || normalized == "turnleftsign" ||
+        normalized == "turnleft") {
         return TrafficSignalId::TurnLeft;
     }
 
-    return std::nullopt;
+    if (normalized == "vireadireitasign" || normalized == "turnrightsign" ||
+        normalized == "turnright") {
+        return TrafficSignalId::TurnRight;
+    }
+
+    return TrafficSignalId::Unknown;
 }
 
 } // namespace traffic_sign_service::edge_impulse

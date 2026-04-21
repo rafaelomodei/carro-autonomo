@@ -3,6 +3,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 
@@ -33,6 +34,22 @@ public:
         std::unique_lock<std::mutex> lock(mutex_);
         cv_.wait(lock, [&] {
             return generation_ > last_seen_generation || !running.load();
+        });
+
+        if (generation_ <= last_seen_generation) {
+            return std::nullopt;
+        }
+
+        return latest_;
+    }
+
+    std::optional<Snapshot> waitForNext(std::uint64_t last_seen_generation,
+                                        const std::atomic<bool> &running,
+                                        std::function<bool()> wake_condition) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        cv_.wait(lock, [&] {
+            return generation_ > last_seen_generation || !running.load() ||
+                   (wake_condition && wake_condition());
         });
 
         if (generation_ <= last_seen_generation) {

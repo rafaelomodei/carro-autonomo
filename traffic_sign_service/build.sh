@@ -28,7 +28,7 @@ if [[ -f "${CONFIG_FILE}" ]]; then
   set +a
 fi
 
-MODEL_ZIP="${EDGE_IMPULSE_MODEL_ZIP:-${SCRIPT_DIR}/../edgeImpulse/tcc-pare-direita-esquerda-cam-raspberry-v15.zip}"
+MODEL_ZIP="${EDGE_IMPULSE_MODEL_ZIP:-${SCRIPT_DIR}/../edgeImpulse/tcc-pare-direita-esquerda-cam-raspberry-cpp-linux-v20-impulse.zip}"
 MODEL_ZIP="$(resolve_path "${CONFIG_DIR}" "${MODEL_ZIP}")"
 
 cmake -S "${SCRIPT_DIR}" -B "${BUILD_DIR}" \

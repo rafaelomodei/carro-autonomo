@@ -26,6 +26,8 @@ std::string_view toString(TrafficSignalId signal_id) {
         return "turn_left";
     case TrafficSignalId::TurnRight:
         return "turn_right";
+    case TrafficSignalId::Unknown:
+        return "unknown";
     }
     return "unknown";
 }
@@ -41,7 +43,25 @@ std::optional<TrafficSignalId> trafficSignalIdFromCanonicalString(std::string_vi
     if (normalized == "turn_right") {
         return TrafficSignalId::TurnRight;
     }
+    if (normalized == "unknown") {
+        return TrafficSignalId::Unknown;
+    }
     return std::nullopt;
+}
+
+std::string displayLabel(TrafficSignalId signal_id) {
+    switch (signal_id) {
+    case TrafficSignalId::Stop:
+        return "Parada obrigatoria";
+    case TrafficSignalId::TurnLeft:
+        return "Vire a esquerda";
+    case TrafficSignalId::TurnRight:
+        return "Vire a direita";
+    case TrafficSignalId::Unknown:
+        return "Sinal desconhecido";
+    }
+
+    return "Sinal desconhecido";
 }
 
 } // namespace traffic_sign_service

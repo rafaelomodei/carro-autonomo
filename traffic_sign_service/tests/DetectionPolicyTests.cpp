@@ -5,6 +5,8 @@ namespace {
 
 using traffic_sign_service::SignalDetection;
 using traffic_sign_service::TrafficSignalId;
+using traffic_sign_service::TrafficSignDetectorState;
+using traffic_sign_service::TrafficSignFrameResult;
 using traffic_sign_service::policy::DetectionPolicy;
 using traffic_sign_service::policy::DetectionPolicyConfig;
 using traffic_sign_service::tests::TestRegistrar;
@@ -14,45 +16,57 @@ SignalDetection makeDetection(TrafficSignalId signal_id, double confidence) {
     SignalDetection detection;
     detection.signal_id = signal_id;
     detection.confidence = confidence;
+    detection.display_label = traffic_sign_service::displayLabel(signal_id);
     return detection;
 }
 
-void testPolicyRequiresStableConsecutiveFrames() {
-    DetectionPolicy policy(DetectionPolicyConfig{0.60, 3, 2000});
-
-    expect(!policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.92), 1000).has_value(),
-           "Primeiro frame nao deve emitir evento.");
-    expect(!policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.91), 1100).has_value(),
-           "Segundo frame ainda nao deve emitir evento.");
-    const auto emitted = policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.90), 1200);
-
-    expect(emitted.has_value() && *emitted == TrafficSignalId::Stop,
-           "Terceiro frame consecutivo deve emitir o sinal confirmado.");
+TrafficSignFrameResult makeFrameResult(std::optional<SignalDetection> active_detection) {
+    TrafficSignFrameResult result;
+    result.detector_state = active_detection.has_value() ? TrafficSignDetectorState::Confirmed
+                                                         : TrafficSignDetectorState::Idle;
+    result.active_detection = std::move(active_detection);
+    return result;
 }
 
-void testPolicyDebouncesAndRequiresReappearanceAfterCooldown() {
-    DetectionPolicy policy(DetectionPolicyConfig{0.60, 3, 2000});
+void testPolicyEmitsOnlyOnceWhileSignalRemainsActive() {
+    DetectionPolicy policy(DetectionPolicyConfig{2000});
 
-    policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.9), 1000);
-    policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.9), 1100);
-    expect(policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.9), 1200).has_value(),
-           "Primeira aparicao estavel deve emitir.");
+    expect(policy
+               .evaluate(makeFrameResult(makeDetection(TrafficSignalId::Stop, 0.92)), 1000)
+               .has_value(),
+           "Primeiro estado confirmado deve emitir evento.");
+    expect(!policy
+                .evaluate(makeFrameResult(makeDetection(TrafficSignalId::Stop, 0.91)), 1100)
+                .has_value(),
+           "Mesmo sinal ativo em seguida nao deve emitir novamente.");
+}
 
-    expect(!policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.9), 3400).has_value(),
-           "Mesma sequencia nao deve reenviar mesmo depois de muito tempo.");
+void testPolicyRequiresSignalToDisappearBeforeCooldownRearms() {
+    DetectionPolicy policy(DetectionPolicyConfig{2000});
 
-    policy.evaluate(std::nullopt, 3500);
+    expect(policy
+               .evaluate(makeFrameResult(makeDetection(TrafficSignalId::Stop, 0.90)), 1000)
+               .has_value(),
+           "Primeira aparicao confirmada deve emitir.");
 
-    policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.9), 3600);
-    policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.9), 3700);
-    expect(policy.evaluate(makeDetection(TrafficSignalId::Stop, 0.9), 3800).has_value(),
+    expect(!policy
+                .evaluate(makeFrameResult(makeDetection(TrafficSignalId::Stop, 0.90)), 3400)
+                .has_value(),
+           "Sem desaparecer, o mesmo sinal nao deve ser reenviado.");
+
+    policy.evaluate(makeFrameResult(std::nullopt), 3500);
+
+    expect(policy
+               .evaluate(makeFrameResult(makeDetection(TrafficSignalId::Stop, 0.90)), 3800)
+               .has_value(),
            "Reaparicao apos reset e cooldown deve gerar novo evento.");
 }
 
-TestRegistrar detection_policy_stable_test("detection_policy_requires_consecutive_frames",
-                                           testPolicyRequiresStableConsecutiveFrames);
-TestRegistrar detection_policy_cooldown_test(
-    "detection_policy_debounces_and_rearms_after_reappearance",
-    testPolicyDebouncesAndRequiresReappearanceAfterCooldown);
+TestRegistrar detection_policy_active_test(
+    "detection_policy_emits_only_once_while_signal_is_active",
+    testPolicyEmitsOnlyOnceWhileSignalRemainsActive);
+TestRegistrar detection_policy_rearm_test(
+    "detection_policy_rearms_after_signal_disappears_and_cooldown_passes",
+    testPolicyRequiresSignalToDisappearBeforeCooldownRearms);
 
 } // namespace

@@ -1,42 +1,67 @@
-#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
-#include <opencv2/imgcodecs.hpp>
+#include <opencv2/core.hpp>
 
 #include "TestRegistry.hpp"
 #include "app/TrafficSignService.hpp"
 #include "domain/ITrafficSignClassifier.hpp"
-#include "domain/TrafficSignal.hpp"
-#include "transport/IVehicleTransport.hpp"
-#include "vision/Base64.hpp"
+#include "frame_source/IFrameSource.hpp"
+#include "transport/IMessagePublisher.hpp"
 
 namespace {
 
 using traffic_sign_service::SignalDetection;
 using traffic_sign_service::TrafficSignalId;
+using traffic_sign_service::TrafficSignDetectorState;
+using traffic_sign_service::TrafficSignFrameResult;
+using traffic_sign_service::TrafficSignInferenceInput;
 using traffic_sign_service::app::TrafficSignService;
 using traffic_sign_service::config::ServiceConfig;
+using traffic_sign_service::frame_source::FramePacket;
+using traffic_sign_service::frame_source::IFrameSource;
 using traffic_sign_service::tests::TestRegistrar;
 using traffic_sign_service::tests::expect;
-using traffic_sign_service::transport::IVehicleTransport;
-using traffic_sign_service::vision::encodeBase64;
+using traffic_sign_service::tests::expectContains;
+using traffic_sign_service::transport::IMessagePublisher;
 
-class FakeVehicleTransport final : public IVehicleTransport {
+class FakeFrameSource final : public IFrameSource {
 public:
-    void setMessageHandler(MessageHandler handler) override { message_handler_ = std::move(handler); }
-    void setOpenHandler(OpenHandler handler) override { open_handler_ = std::move(handler); }
+    explicit FakeFrameSource(bool finite) : finite_{finite} {}
 
+    void setFrameHandler(FrameHandler handler) override { frame_handler_ = std::move(handler); }
+    void setEndHandler(EndHandler handler) override { end_handler_ = std::move(handler); }
     void start() override { started_ = true; }
+    void stop() override { started_ = false; }
+    bool isFinite() const noexcept override { return finite_; }
+    std::string description() const override { return finite_ ? "Fake finite" : "Fake infinite"; }
 
-    void stop() override {
-        started_ = false;
-        cv_.notify_all();
+    void emitFrame(const cv::Mat &frame, std::uint64_t timestamp_ms) {
+        if (frame_handler_) {
+            frame_handler_(FramePacket{frame.clone(), timestamp_ms});
+        }
     }
 
+    void finish() {
+        if (end_handler_) {
+            end_handler_();
+        }
+    }
+
+private:
+    bool finite_{false};
+    bool started_{false};
+    FrameHandler frame_handler_;
+    EndHandler end_handler_;
+};
+
+class FakeMessagePublisher final : public IMessagePublisher {
+public:
     bool sendText(const std::string &payload) override {
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -44,18 +69,6 @@ public:
         }
         cv_.notify_all();
         return true;
-    }
-
-    void emitOpen() {
-        if (open_handler_) {
-            open_handler_();
-        }
-    }
-
-    void emitMessage(const std::string &payload) {
-        if (message_handler_) {
-            message_handler_(payload);
-        }
     }
 
     bool waitForSentCount(std::size_t expected, std::chrono::milliseconds timeout) {
@@ -70,9 +83,6 @@ public:
     }
 
 private:
-    MessageHandler message_handler_;
-    OpenHandler open_handler_;
-    bool started_{false};
     mutable std::mutex mutex_;
     mutable std::condition_variable cv_;
     std::vector<std::string> sent_messages_;
@@ -80,19 +90,41 @@ private:
 
 class FakeClassifier final : public traffic_sign_service::ITrafficSignClassifier {
 public:
-    explicit FakeClassifier(std::vector<std::vector<SignalDetection>> detections_per_call)
-        : detections_per_call_{std::move(detections_per_call)} {}
+    explicit FakeClassifier(std::vector<TrafficSignFrameResult> results)
+        : results_{std::move(results)} {}
 
-    std::vector<SignalDetection> detect(const cv::Mat &) override {
+    TrafficSignFrameResult detect(const TrafficSignInferenceInput &input,
+                                  std::int64_t timestamp_ms) override {
         std::lock_guard<std::mutex> lock(mutex_);
         ++invocations_;
-        if (invocations_ <= detections_per_call_.size()) {
-            cv_.notify_all();
-            return detections_per_call_[invocations_ - 1];
+
+        TrafficSignFrameResult result;
+        if (invocations_ <= results_.size()) {
+            result = results_[invocations_ - 1];
         }
+
+        if (result.roi.frame_rect.area() <= 0) {
+            result.roi = traffic_sign_service::buildTrafficSignRoi(
+                input.frame.size(), 0.55, 1.0, 0.08, 0.72, true);
+        }
+        if (result.timestamp_ms <= 0) {
+            result.timestamp_ms = timestamp_ms;
+        }
+        if (result.debug_frame.empty()) {
+            result.debug_frame = input.frame.clone();
+        }
+
         cv_.notify_all();
-        return {};
+        return result;
     }
+
+    std::vector<std::string> modelLabels() const override {
+        return {"Parada Obrigatoria sign", "Vire a esquerda sign"};
+    }
+
+    cv::Size inputSize() const override { return {32, 32}; }
+
+    std::string backendName() const override { return "fake"; }
 
     bool waitForInvocations(std::size_t expected, std::chrono::milliseconds timeout) {
         std::unique_lock<std::mutex> lock(mutex_);
@@ -100,145 +132,107 @@ public:
     }
 
 private:
-    std::vector<std::vector<SignalDetection>> detections_per_call_;
+    std::vector<TrafficSignFrameResult> results_;
     std::size_t invocations_{0};
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable cv_;
 };
 
-std::string buildValidVisionFramePayload() {
-    cv::Mat image(8, 8, CV_8UC3, cv::Scalar(0, 0, 255));
-    std::vector<unsigned char> encoded_bytes;
-    cv::imencode(".jpg", image, encoded_bytes);
-
-    return std::string(R"({"type":"vision.frame","view":"raw","timestamp_ms":1,"mime":"image/jpeg","width":8,"height":8,"data":")") +
-           encodeBase64(encoded_bytes) + R"("})";
-}
-
-SignalDetection makeStopDetection() {
+TrafficSignFrameResult makeRawStopResult(double confidence) {
+    TrafficSignFrameResult result;
+    result.detector_state = TrafficSignDetectorState::Idle;
     SignalDetection detection;
     detection.signal_id = TrafficSignalId::Stop;
-    detection.confidence = 0.91;
-    return detection;
+    detection.model_label = "Parada Obrigatoria sign";
+    detection.display_label = traffic_sign_service::displayLabel(TrafficSignalId::Stop);
+    detection.confidence = confidence;
+    detection.bbox_frame = {100, 50, 40, 40};
+    detection.bbox_roi = {10, 10, 40, 40};
+    result.raw_detections.push_back(detection);
+    return result;
 }
 
-void testServiceSubscribesOnOpenAndReconnect() {
-    auto *transport = new FakeVehicleTransport();
-    auto *classifier = new FakeClassifier({});
+void testServiceEmitsSignalAndTelemetryForWebsocketMode() {
+    auto *frame_source = new FakeFrameSource(false);
+    auto *publisher = new FakeMessagePublisher();
+    auto *classifier = new FakeClassifier({makeRawStopResult(0.95), makeRawStopResult(0.96)});
 
     ServiceConfig config;
-    config.inference_max_fps = 60.0;
-    TrafficSignService service(config, std::unique_ptr<IVehicleTransport>(transport),
-                               std::unique_ptr<traffic_sign_service::ITrafficSignClassifier>(classifier),
-                               [] { return static_cast<std::uint64_t>(1000); });
-
-    service.start();
-    transport->emitOpen();
-    expect(transport->waitForSentCount(2, std::chrono::milliseconds(250)),
-           "Ao abrir o socket o servico deve se registrar como telemetry e assinar raw.");
-
-    transport->emitOpen();
-    expect(transport->waitForSentCount(4, std::chrono::milliseconds(250)),
-           "Ao reconectar o servico deve reenviar os comandos de registro e subscribe.");
-
-    const auto sent_messages = transport->sentMessages();
-    expect(sent_messages[0] == "client:telemetry", "Primeira mensagem deve registrar telemetry.");
-    expect(sent_messages[1] == "stream:subscribe=raw",
-           "Segunda mensagem deve assinar apenas a view raw.");
-    expect(sent_messages[2] == "client:telemetry",
-           "Reconexao deve repetir o registro telemetry.");
-    expect(sent_messages[3] == "stream:subscribe=raw",
-           "Reconexao deve repetir a assinatura raw.");
-
-    service.stop();
-}
-
-void testServiceEmitsSingleEventForStableDetection() {
-    auto *transport = new FakeVehicleTransport();
-    auto *classifier = new FakeClassifier({
-        {makeStopDetection()},
-        {makeStopDetection()},
-        {makeStopDetection()},
-        {makeStopDetection()},
-        {},
-        {makeStopDetection()},
-        {makeStopDetection()},
-        {makeStopDetection()},
-    });
-
-    std::uint64_t now_ms = 1000;
-    ServiceConfig config;
+    config.frame_source_mode = traffic_sign_service::FrameSourceMode::WebSocket;
+    config.frame_preview_enabled = false;
+    config.traffic_sign_min_consecutive_frames = 2;
     config.inference_max_fps = 120.0;
-    TrafficSignService service(config, std::unique_ptr<IVehicleTransport>(transport),
-                               std::unique_ptr<traffic_sign_service::ITrafficSignClassifier>(classifier),
-                               [&now_ms] { return now_ms; });
+
+    TrafficSignService service(
+        config, std::unique_ptr<IFrameSource>(frame_source),
+        std::unique_ptr<IMessagePublisher>(publisher),
+        std::unique_ptr<traffic_sign_service::ITrafficSignClassifier>(classifier),
+        [] { return static_cast<std::uint64_t>(5000); });
 
     service.start();
-    transport->emitOpen();
-    expect(transport->waitForSentCount(2, std::chrono::milliseconds(250)),
-           "Servico deve concluir handshake do consumidor telemetry.");
 
-    const auto frame_payload = buildValidVisionFramePayload();
-
-    now_ms = 1000;
-    transport->emitMessage(frame_payload);
+    const cv::Mat frame(120, 160, CV_8UC3, cv::Scalar(0, 0, 255));
+    frame_source->emitFrame(frame, 1000);
     expect(classifier->waitForInvocations(1, std::chrono::milliseconds(500)),
            "Primeiro frame deve chegar ao classificador.");
+    frame_source->emitFrame(frame, 1100);
 
-    now_ms = 1100;
-    transport->emitMessage(frame_payload);
     expect(classifier->waitForInvocations(2, std::chrono::milliseconds(500)),
-           "Segundo frame deve chegar ao classificador.");
+           "Dois frames devem chegar ao classificador.");
+    expect(publisher->waitForSentCount(3, std::chrono::milliseconds(500)),
+           "Modo websocket deve emitir duas telemetrias e um signal:detected.");
 
-    now_ms = 1200;
-    transport->emitMessage(frame_payload);
-    expect(classifier->waitForInvocations(3, std::chrono::milliseconds(500)),
-           "Terceiro frame deve chegar ao classificador.");
-    expect(transport->waitForSentCount(3, std::chrono::milliseconds(500)),
-           "Deteccao confirmada deve gerar um unico signal:detected.");
-
-    now_ms = 4000;
-    transport->emitMessage(frame_payload);
-    expect(classifier->waitForInvocations(4, std::chrono::milliseconds(500)),
-           "Frames repetidos devem continuar sendo processados.");
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    expect(transport->sentMessages().size() == 3,
-           "Mesma sequencia de frames nao deve gerar evento duplicado.");
-
-    now_ms = 4100;
-    transport->emitMessage(frame_payload);
-    expect(classifier->waitForInvocations(5, std::chrono::milliseconds(500)),
-           "Frame vazio deve quebrar a sequencia atual.");
-
-    now_ms = 5000;
-    transport->emitMessage(frame_payload);
-    expect(classifier->waitForInvocations(6, std::chrono::milliseconds(500)),
-           "Nova aparicao 1 deve ser processada.");
-
-    now_ms = 5100;
-    transport->emitMessage(frame_payload);
-    expect(classifier->waitForInvocations(7, std::chrono::milliseconds(500)),
-           "Nova aparicao 2 deve ser processada.");
-
-    now_ms = 5200;
-    transport->emitMessage(frame_payload);
-    expect(classifier->waitForInvocations(8, std::chrono::milliseconds(500)),
-           "Nova aparicao 3 deve ser processada.");
-    expect(transport->waitForSentCount(4, std::chrono::milliseconds(500)),
-           "Reaparicao estavel apos reset deve emitir novo evento.");
-
-    const auto sent_messages = transport->sentMessages();
-    expect(sent_messages[2] == "signal:detected=stop",
-           "Primeiro evento emitido deve apontar para stop.");
-    expect(sent_messages[3] == "signal:detected=stop",
-           "Reaparicao confirmada deve reenviar apenas o mesmo sinal canonical.");
+    const auto messages = publisher->sentMessages();
+    expectContains(messages[0], "\"type\":\"telemetry.traffic_sign_detection\"",
+                   "Primeira mensagem deve ser telemetria detalhada.");
+    expect(messages[1] == "signal:detected=stop",
+           "Segunda mensagem deve emitir o sinal canonico confirmado.");
+    expectContains(messages[2], "\"active_detection\":{",
+                   "Telemetria confirmada deve conter active_detection.");
 
     service.stop();
 }
 
-TestRegistrar service_open_test("traffic_sign_service_resubscribes_after_reconnect",
-                                testServiceSubscribesOnOpenAndReconnect);
-TestRegistrar service_emit_test("traffic_sign_service_emits_single_signal_events",
-                                testServiceEmitsSingleEventForStableDetection);
+void testServiceCompletesFiniteSourceWithoutSendingMessagesOutsideWebsocketMode() {
+    auto *frame_source = new FakeFrameSource(true);
+    auto *publisher = new FakeMessagePublisher();
+    auto *classifier = new FakeClassifier({makeRawStopResult(0.95)});
+
+    ServiceConfig config;
+    config.frame_source_mode = traffic_sign_service::FrameSourceMode::Image;
+    config.frame_preview_enabled = false;
+    config.inference_max_fps = 120.0;
+
+    TrafficSignService service(
+        config, std::unique_ptr<IFrameSource>(frame_source),
+        std::unique_ptr<IMessagePublisher>(publisher),
+        std::unique_ptr<traffic_sign_service::ITrafficSignClassifier>(classifier),
+        [] { return static_cast<std::uint64_t>(5000); });
+
+    service.start();
+    const cv::Mat frame(120, 160, CV_8UC3, cv::Scalar(0, 255, 0));
+    frame_source->emitFrame(frame, 1000);
+    frame_source->finish();
+
+    expect(classifier->waitForInvocations(1, std::chrono::milliseconds(500)),
+           "Frame de fonte finita deve ser processado.");
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (!service.isCompleted() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    expect(service.isCompleted(), "Servico deve encerrar o pipeline ao final da fonte finita.");
+    expect(publisher->sentMessages().empty(),
+           "Modos locais nao devem publicar mensagens WebSocket.");
+
+    service.stop();
+}
+
+TestRegistrar service_ws_test("traffic_sign_service_emits_signal_and_telemetry_in_websocket_mode",
+                              testServiceEmitsSignalAndTelemetryForWebsocketMode);
+TestRegistrar service_local_completion_test(
+    "traffic_sign_service_completes_finite_source_without_websocket_output",
+    testServiceCompletesFiniteSourceWithoutSendingMessagesOutsideWebsocketMode);
 
 } // namespace

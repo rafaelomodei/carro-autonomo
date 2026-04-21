@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui videoio)
 find_package(nlohmann_json REQUIRED)
 
 find_path(WEBSOCKETPP_INCLUDE_DIR websocketpp/client.hpp REQUIRED)
@@ -14,7 +14,7 @@ find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
 
 set(
     TRAFFIC_SIGN_SERVICE_MODEL_ZIP
-    "${CMAKE_CURRENT_SOURCE_DIR}/../edgeImpulse/tcc-pare-direita-esquerda-cam-raspberry-v15.zip"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../edgeImpulse/tcc-pare-direita-esquerda-cam-raspberry-cpp-linux-v20-impulse.zip"
     CACHE FILEPATH
     "Path to the Edge Impulse model zip"
 )
@@ -56,18 +56,34 @@ file(GLOB_RECURSE EI_CMSIS_SOURCES
     "${EI_SDK_DIR}/CMSIS/NN/Source/*.c"
 )
 
+file(GLOB EI_MODEL_CPP_SOURCES
+    "${EI_MODEL_DIR}/tflite-model/*.cpp"
+    "${EI_MODEL_DIR}/tflite-model/*.cc"
+)
+
+if (EI_MODEL_CPP_SOURCES STREQUAL "")
+    message(FATAL_ERROR "Nenhuma fonte de modelo foi encontrada em ${EI_MODEL_DIR}/tflite-model")
+endif ()
+
 set(EI_MODEL_SOURCES
-    "${EI_MODEL_DIR}/tflite-model/tflite_learn_3_compiled.cpp"
+    ${EI_MODEL_CPP_SOURCES}
     "${EI_SDK_DIR}/tensorflow/lite/c/common.c"
 )
 
 set(TRAFFIC_SIGN_SERVICE_CORE_SOURCES
     src/app/TrafficSignService.cpp
     src/config/ServiceConfig.cpp
+    src/domain/TrafficSignTypes.cpp
     src/domain/TrafficSignal.cpp
+    src/frame_source/LocalFrameSource.cpp
+    src/frame_source/WebSocketFrameSource.cpp
     src/edge_impulse/LabelMapping.cpp
+    src/edge_impulse/ImageSignalEncoder.cpp
     src/policy/DetectionPolicy.cpp
+    src/policy/TrafficSignTemporalFilter.cpp
+    src/telemetry/TrafficSignTelemetry.cpp
     src/visualization/FramePreviewWindow.cpp
+    src/visualization/TrafficSignDebugRenderer.cpp
     src/vision/Base64.cpp
     src/vision/FrameDecoder.cpp
     src/vision/VisionFrame.cpp
@@ -111,6 +127,7 @@ target_link_libraries(traffic_sign_service_transport
 
 add_library(traffic_sign_service_edge_impulse STATIC
     src/edge_impulse/EdgeImpulseClassifier.cpp
+    src/edge_impulse/EimProcessClassifier.cpp
     ${EI_MODEL_SOURCES}
     ${EI_CPP_SOURCES}
     ${EI_CMSIS_SOURCES}
@@ -130,6 +147,11 @@ target_link_libraries(traffic_sign_service_edge_impulse
         ${OpenCV_LIBS}
 )
 
+target_compile_definitions(traffic_sign_service_edge_impulse
+    PRIVATE
+        SILENCE_EI_CLASSFIER_OBJECT_DETECTION_COUNT_WARNING=1
+)
+
 add_executable(traffic_sign_service
     src/main.cpp
 )
@@ -146,16 +168,23 @@ enable_testing()
 add_executable(traffic_sign_service_tests
     tests/TestMain.cpp
     tests/DetectionPolicyTests.cpp
+    tests/EimProcessClassifierTests.cpp
+    tests/ImageSignalEncoderTests.cpp
     tests/LabelMappingTests.cpp
     tests/LatestFrameStoreTests.cpp
     tests/ServiceConfigTests.cpp
     tests/TrafficSignServiceTests.cpp
+    tests/TrafficSignTelemetryTests.cpp
+    tests/TrafficSignTemporalFilterTests.cpp
+    tests/TrafficSignTypesTests.cpp
+    tests/WebSocketFrameSourceTests.cpp
     tests/VisionFrameParserTests.cpp
 )
 
 target_link_libraries(traffic_sign_service_tests
     PRIVATE
         traffic_sign_service_core
+        traffic_sign_service_edge_impulse
 )
 
 add_test(

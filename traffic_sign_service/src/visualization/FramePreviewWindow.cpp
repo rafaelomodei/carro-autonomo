@@ -1,5 +1,6 @@
 #include "visualization/FramePreviewWindow.hpp"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 
@@ -37,9 +38,9 @@ FramePreviewWindow::FramePreviewWindow(bool enabled, std::string window_name)
 
 FramePreviewWindow::~FramePreviewWindow() { close(); }
 
-void FramePreviewWindow::show(const cv::Mat &frame) {
+bool FramePreviewWindow::show(const cv::Mat &frame) {
     if (!enabled_ || frame.empty()) {
-        return;
+        return true;
     }
 
     try {
@@ -50,12 +51,51 @@ void FramePreviewWindow::show(const cv::Mat &frame) {
         }
 
         cv::imshow(window_name_, frame);
-        cv::waitKey(1);
+        frame_rendered_ = true;
+        return poll(1);
     } catch (const cv::Exception &ex) {
         enabled_ = false;
         std::cerr << "[preview] falha ao exibir frame: " << ex.what()
                   << ". Preview desabilitado." << std::endl;
         close();
+        return true;
+    }
+}
+
+bool FramePreviewWindow::poll(int delay_ms) {
+    if (!enabled_) {
+        return true;
+    }
+
+    try {
+        if (window_created_ && frame_rendered_ && visibility_check_supported_) {
+            const double visible = cv::getWindowProperty(window_name_, cv::WND_PROP_VISIBLE);
+            if (std::isnan(visible) || visible < 0.0) {
+                visibility_check_supported_ = false;
+            } else if (visible < 1.0) {
+                std::cout << "[preview] janela fechada pelo usuario." << std::endl;
+                return false;
+            }
+        }
+        const int key = cv::waitKey(delay_ms);
+        return handleUiEvent(key);
+    } catch (const cv::Exception &ex) {
+        enabled_ = false;
+        std::cerr << "[preview] backend grafico falhou durante waitKey/getWindowProperty: "
+                  << ex.what() << ". Preview desabilitado." << std::endl;
+        close();
+        return true;
+    }
+}
+
+bool FramePreviewWindow::handleUiEvent(int key) {
+    switch (key) {
+    case 27:
+    case 'q':
+    case 'Q':
+        return false;
+    default:
+        return true;
     }
 }
 
@@ -71,6 +111,8 @@ void FramePreviewWindow::close() {
     }
 
     window_created_ = false;
+    frame_rendered_ = false;
+    visibility_check_supported_ = true;
 }
 
 } // namespace traffic_sign_service::visualization
